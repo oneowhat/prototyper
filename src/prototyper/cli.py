@@ -5,8 +5,8 @@ described in the PRD (`build`, `watch`, `note`). The parser is stdlib-only
 (argparse) and the heavy pipeline imports (Jinja2/WeasyPrint, pulled in by
 :mod:`prototyper.build`) are deferred into each subcommand handler, so
 ``prototyper --version`` / ``--help`` and unrelated subcommands still work
-even before the rendering dependencies are importable. ``watch`` and
-``note`` remain registered but unimplemented until their tasks land.
+even before the rendering dependencies are importable. ``watch`` remains
+registered but unimplemented until its task lands.
 """
 
 from __future__ import annotations
@@ -52,6 +52,18 @@ def _add_note(subparsers: argparse._SubParsersAction) -> None:
         "note",
         help="Attach a rationale entry to the project's history log.",
     )
+    parser.add_argument(
+        "message",
+        help="The rationale text to record "
+        '(e.g. "lowered this card\'s cost from 3 to 2 for balance").',
+    )
+    parser.add_argument(
+        "project",
+        nargs="?",
+        default=".",
+        help="Path to the project directory or its project.yaml "
+        "(default: current directory).",
+    )
     parser.set_defaults(func=_cmd_note)
 
 
@@ -93,7 +105,23 @@ def _cmd_watch(args: argparse.Namespace) -> int:
 
 
 def _cmd_note(args: argparse.Namespace) -> int:
-    raise NotImplementedError("note is not implemented yet")
+    # Note only touches the config loader and the history log — no rendering
+    # stack — so its imports stay light and local like the other subcommands.
+    from .config import ConfigError, load_project
+    from .history import HistoryError, record_note
+
+    try:
+        config = load_project(args.project)
+        entry = record_note(config.project_dir, args.message)
+    except (ConfigError, HistoryError) as exc:
+        print(f"note failed: {exc}", file=sys.stderr)
+        return 1
+
+    if entry["build"] is not None:
+        print(f"Noted, attached to the build at {entry['build']}.")
+    else:
+        print("Noted (standalone — no build recorded yet).")
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:

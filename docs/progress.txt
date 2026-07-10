@@ -275,3 +275,35 @@ Why: This is the PRD's zero-effort build history — "every build appends an
   testable, and the run_build wiring test stubs assemble_pdf so it verifies
   the history side effect without WeasyPrint's native libraries.
 
+## 2026-07-10 — Task: Implement `note` CLI command
+Changed: Added history.record_note (appends a manual "note" entry to
+  .prototyper/history.yaml, associated with the most recent build), wired the
+  `note <message> [project]` subcommand in cli.py (light config+history imports,
+  clean error reporting, build-vs-standalone confirmation message), and added
+  tests/test_note.py covering standalone/attached notes, latest-build
+  selection, append ordering, empty/whitespace/malformed-log errors, YAML
+  readability, and the CLI success/error/defaulting paths.
+Why: This is the PRD's manual half of "Design memory" — the free-text
+  rationale that plain diffs and git messages capture poorly for a
+  non-technical audience, and the part the PRD flags as most worth getting
+  right. The on-disk format was deliberately left open by the history task
+  (a flat, type-tagged entries list), so a note drops in as a second entry
+  type with no schema rework: type/timestamp/message/build, key order
+  preserved so it reads as a changelog. The "associated with the most recent
+  build" requirement is stored as a `build` field carrying that build entry's
+  timestamp (the closest thing to a stable per-build id — inputs_hash repeats
+  on a rebuild of unchanged inputs, so it can't identify *which* build);
+  when no build exists yet the note is standalone with build=None, satisfying
+  the PRD's "or standalone if no build has happened yet". record_note lives in
+  history.py next to record_build but takes the project_dir (not a
+  ProjectConfig) because a note needs no input hashing — only the log; the CLI
+  still load_project()s first so `note` validates the project and shares
+  build's dir-or-yaml-path ergonomics and clean one-line error reporting
+  (ConfigError/HistoryError -> "note failed: <msg>", exit 1, no traceback).
+  Kept the loaders' fail-loud stance: an empty/whitespace-only message and a
+  malformed existing log both raise HistoryError rather than writing junk.
+  timestamp is injectable (defaults to UTC-now ISO-8601, seconds precision)
+  for deterministic tests, mirroring record_build. Message is a required
+  positional and project an optional trailing positional (default ".") to
+  mirror the `build` command's argument shape.
+

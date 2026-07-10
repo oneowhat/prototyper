@@ -168,3 +168,44 @@ def record_build(
     }
     append_entry(config.project_dir, entry)
     return entry
+
+
+def record_note(
+    project_dir: str | Path,
+    message: str,
+    *,
+    timestamp: str | None = None,
+) -> dict:
+    """Append a manual designer note and return it.
+
+    This is the PRD's ``note`` command: it attaches free-text rationale to the
+    history log, associated with the **most recent build** so a later reader
+    can see which build a decision followed. The association is stored as the
+    referenced build entry's ``timestamp`` under ``build``; when no build has
+    been recorded yet the note stands alone and ``build`` is ``None``. Ordering
+    is preserved (entries are only appended), so a note also sits after the
+    build it annotates in the file.
+
+    ``timestamp`` defaults to the current UTC time in ISO-8601 (overridable,
+    mainly for tests). Raises :class:`HistoryError` if ``message`` is empty or
+    whitespace-only, or if the existing log is malformed.
+    """
+    if not message or not message.strip():
+        raise HistoryError("note message must not be empty")
+    if timestamp is None:
+        timestamp = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+    build_ref = None
+    for prior in reversed(load_history(project_dir)):
+        if prior.get("type") == "build":
+            build_ref = prior.get("timestamp")
+            break
+
+    entry = {
+        "type": "note",
+        "timestamp": timestamp,
+        "message": message,
+        "build": build_ref,
+    }
+    append_entry(project_dir, entry)
+    return entry
