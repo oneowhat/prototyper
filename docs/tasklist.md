@@ -9,7 +9,7 @@
 - [x] Add cut line rendering
 - [x] Implement PDF assembly from packed sheets
 - [x] Wire up `build` CLI command
-- [ ] Implement history log with automatic build entries
+- [x] Implement history log with automatic build entries
 - [ ] Implement `note` CLI command
 - [ ] Build live browser preview server
 - [ ] Add file watcher with PDF rebuild trigger

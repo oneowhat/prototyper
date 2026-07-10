@@ -61,6 +61,7 @@ def _cmd_build(args: argparse.Namespace) -> int:
     from .build import run_build
     from .config import ConfigError
     from .data import DataError
+    from .history import HistoryError
     from .pack import PackError
     from .pdf import PdfError
     from .render import RenderError
@@ -68,7 +69,15 @@ def _cmd_build(args: argparse.Namespace) -> int:
 
     try:
         plan = run_build(args.project, args.output)
-    except (ConfigError, DataError, SizeError, PackError, RenderError, PdfError) as exc:
+    except (
+        ConfigError,
+        DataError,
+        SizeError,
+        PackError,
+        RenderError,
+        PdfError,
+        HistoryError,
+    ) as exc:
         print(f"build failed: {exc}", file=sys.stderr)
         return 1
 

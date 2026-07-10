@@ -241,3 +241,37 @@ Why: This is the first end-to-end command — it joins the previously-built,
   deliberately left to its own next task; this command does render-to-PDF
   only.
 
+## 2026-07-10 — Task: Implement history log with automatic build entries
+Changed: Added src/prototyper/history.py (HistoryError, HISTORY_VERSION,
+  history_path/hash_inputs/append_entry/load_history/record_build) owning
+  the PRD "Design memory" log at .prototyper/history.yaml, wired an
+  automatic build entry into run_build (build.py) after the PDF write and
+  added HistoryError to the CLI's clean-error catch list (cli.py), and added
+  tests/test_history.py covering input hashing, log read/write, entry fields
+  + ordering, relative/absolute output paths, malformed-log errors, and the
+  run_build wiring.
+Why: This is the PRD's zero-effort build history — "every build appends an
+  entry with at minimum a timestamp, a content hash of the inputs, and the
+  output PDF path". Chose the on-disk format as a top-level mapping with a
+  `version` and a flat, append-only `entries` list of `type`-tagged mappings,
+  so the manual `note` command (next task) drops in as another entry type
+  without reworking the schema — the PRD flags the exact entry schema as an
+  open question, so keeping it open was the point. YAML is dumped with
+  sort_keys=False so the declared key order (type/timestamp/inputs_hash/
+  output/...) reads as a human changelog while staying machine-readable for
+  the future AI-assisted feature. hash_inputs digests each of the three
+  build-determining files (config, data CSV, template) independently under a
+  role label and combines the labelled digests, so any edit to any input
+  moves the hash and distinct inputs can't collide by concatenation; a
+  build entry stores the output path relative to the project when it lives
+  inside it (portable) and absolute otherwise. Recording happens in
+  run_build AFTER a successful assemble_pdf, so a failed build logs nothing;
+  it is deliberately kept out of the pure plan_build (a side effect). Kept
+  the loaders' fail-loud stance: a malformed history.yaml raises HistoryError
+  rather than being silently overwritten and losing prior history, and that
+  error joins the others the CLI renders as one clean "build failed:" line.
+  record_build takes an injectable timestamp (defaults to UTC now, ISO-8601,
+  seconds precision) so the append/ordering behaviour is deterministically
+  testable, and the run_build wiring test stubs assemble_pdf so it verifies
+  the history side effect without WeasyPrint's native libraries.
+

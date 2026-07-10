@@ -25,12 +25,13 @@ stage modules already use:
   library lazily.
 
 Each stage raises its own descriptive exception (``ConfigError``,
-``DataError``, ``SizeError``, ``PackError``, ``RenderError``, ``PdfError``);
-this module lets them propagate unchanged so the CLI can turn any of them
-into a single clean "build failed: ..." message.
+``DataError``, ``SizeError``, ``PackError``, ``RenderError``, ``PdfError``,
+``HistoryError``); this module lets them propagate unchanged so the CLI can
+turn any of them into a single clean "build failed: ..." message.
 
-Automatic history logging on build (PRD "Design memory") is a separate,
-later task; this module deliberately does the render-to-PDF work only.
+After the PDF is written, :func:`run_build` appends an automatic entry to the
+project's history log (PRD "Design memory", :mod:`prototyper.history`); a
+failed build (no PDF) records nothing.
 """
 
 from __future__ import annotations
@@ -41,6 +42,7 @@ from pathlib import Path
 from .config import ProjectConfig, load_project
 from .cutlines import CutLine, cut_lines_for_layout
 from .data import load_data
+from .history import record_build
 from .pack import PackedLayout, pack_components
 from .pdf import assemble_pdf
 from .render import render_component
@@ -122,9 +124,12 @@ def run_build(
     """Plan the build and write the PDF, returning the executed plan.
 
     Relative template assets (images, fonts) resolve against the project
-    directory. Raises the same stage exceptions as :func:`plan_build`, plus
+    directory. On success, appends an automatic build entry to the project's
+    history log. Raises the same stage exceptions as :func:`plan_build`, plus
     :class:`~prototyper.pdf.PdfError` if the PDF can't be written (e.g.
-    WeasyPrint is unavailable).
+    WeasyPrint is unavailable) and
+    :class:`~prototyper.history.HistoryError` if the history log can't be
+    updated.
     """
     plan = plan_build(project_path, output_path)
     assemble_pdf(
@@ -133,5 +138,11 @@ def run_build(
         plan.output_path,
         cut_lines=plan.cut_lines,
         base_url=plan.config.project_dir,
+    )
+    record_build(
+        plan.config,
+        plan.output_path,
+        components=len(plan.components),
+        sheets=len(plan.layout.sheets),
     )
     return plan
