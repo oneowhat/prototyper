@@ -108,3 +108,35 @@ Why: This is the step the config loader deliberately deferred — it captured
   unit, and non-positive dimensions all raise SizeError with a clear message.
   Fit-on-page validation is intentionally left to the packing engine.
 
+## 2026-07-10 — Task: Build auto-grid page packing engine
+Changed: Added src/prototyper/pack.py (PAGE_WIDTH_IN/PAGE_HEIGHT_IN
+  constants, Placement/Sheet/PackedLayout dataclasses, PackError, and
+  pack_components) and tests/test_pack.py covering grid computation, the
+  exact-fit floating-point boundary, placement coordinates, multi-sheet
+  overflow, forced page breaks, and every error path.
+Why: This is the PRD's auto-grid page layout — "compute how many components
+  fit per 8.5x11 sheet and fill sheets in data order". Kept it pure
+  geometry: it takes a component *count* (not the data rows or rendered
+  HTML) plus a ResolvedSize and numeric margin/gutter, and returns
+  positioned trim boxes. Decoupling packing from data/render means it is
+  testable with plain numbers and lets the cut-line and PDF-assembly stages
+  each iterate Placements without re-deriving the grid. Placements carry
+  their own width/height so each is a self-contained "draw this rectangle
+  here" instruction. Grid count is floor((usable+gutter)/(size+gutter))
+  with a 1e-6in epsilon so a component that fills the usable area to an
+  exact integer number of columns isn't lost to float drift. Chose top-left
+  anchoring at the margin (not centring the grid in the usable area) so the
+  designer's configured margin is honoured exactly and cut-line coordinates
+  stay predictable; leftover space collects at the right/bottom. Packing is
+  by bounding box, so hex tokens pack like their enclosing rectangle and
+  shape is left for cut-line rendering to interpret. Margin/gutter are
+  accepted as inches (the build command will resolve the config's length
+  strings via sizing.parse_length). This module also discharges the
+  fit-on-page validation the sizing task deferred: a component too wide,
+  too tall, or crowded out by an oversized margin raises PackError with a
+  message naming the offending dimension and the usable space it must fit.
+  Added optional page_breaks (data indices that force a fresh sheet) to
+  cover the PRD's forced-page-break layout hint at the engine level, ahead
+  of any config surface for it; a break at index 0 or a page boundary is a
+  harmless no-op. count=0 yields zero sheets while still reporting the grid.
+

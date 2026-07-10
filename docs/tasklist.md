@@ -5,7 +5,7 @@
 - [x] Implement CSV data loader
 - [x] Implement single-component HTML/CSS rendering
 - [x] Implement component size presets and custom sizing
-- [ ] Build auto-grid page packing engine
+- [x] Build auto-grid page packing engine
 - [ ] Add cut line rendering
 - [ ] Implement PDF assembly from packed sheets
 - [ ] Wire up `build` CLI command
