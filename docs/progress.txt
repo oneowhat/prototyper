@@ -24,3 +24,23 @@ Why: Named the package `prototyper` to match the `.prototyper/` history
   NotImplementedError until their tasks land. pytest is configured via
   pyproject (pythonpath=src) so `pytest` works with no install step.
 
+## 2026-07-10 — Task: Define project.yaml schema and loader
+Changed: Added src/prototyper/config.py (frozen dataclasses
+  ProjectConfig/ComponentSize/Layout, ConfigError, load_project loader)
+  and tests/test_config.py covering valid preset/custom configs, layout
+  defaults + overrides, path resolution, and validation errors.
+Why: Modeled the schema straight from the PRD's project folder convention
+  (component size, data path, template path, layout hints) as immutable
+  dataclasses so downstream stages get a stable, typed contract. Kept the
+  loader strictly structural: it resolves data/template paths against the
+  project dir but does NOT check file existence (job of the CSV/template
+  loaders) and does NOT resolve size presets or parse dimension units
+  (deferred to the component-sizing task) — component size is captured
+  verbatim (preset xor width+height, enforced) so those steps have
+  well-formed input. load_project accepts either the project directory or
+  the project.yaml path for CLI ergonomics, unknown keys are rejected to
+  surface typos early, and every failure path raises ConfigError with a
+  human-readable message rather than a raw YAML/KeyError. Layout defaults
+  (0.5in margin, 0.1in gutter, cut_lines on) chosen for home-printing
+  safety and PRD alignment.
+
