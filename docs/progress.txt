@@ -416,3 +416,33 @@ Why: This is the PRD's `watch` command — the one command that combines the two
   the session core prints nothing itself and tests stub the build to verify
   wiring without WeasyPrint.
 
+## 2026-07-10 — Task: Create example starter project
+Changed: Added examples/starter-cards/ (project.yaml, data/cards.csv,
+  templates/card.html, README.md) — a minimal, copy-me poker-card project —
+  and tests/test_example_project.py asserting the folder convention, config
+  load/path-resolution, a multi-sheet plan_build, data substitution, and
+  CSV-header/placeholder agreement.
+Why: This is the PRD's "a first project works with minimal configuration"
+  goal — the concrete thing a new designer copies and runs before reading any
+  docs, so it doubles as living documentation of the folder convention and the
+  build/watch/note workflow (spelled out in its README). Chose the `poker`
+  preset (the most familiar card size) and six cards so the auto-grid packs 4
+  per 8.5x11 sheet and the example actually spills onto a SECOND sheet,
+  demonstrating pagination rather than a trivial single page. Kept it
+  ASSET-FREE (all styling is inline CSS, no images/fonts) so it builds anywhere
+  with no extra files or missing-asset failures; the README points at where an
+  assets/ folder would go for real projects (git can't track empty dirs, so
+  shipping an empty assets/ would be dead weight anyway). The template is
+  deliberately valid under the renderer's strict defaults: every placeholder
+  maps to a CSV column (StrictUndefined would otherwise fail the build) and the
+  optional `type` uses `| default('')` to model the documented optional-field
+  pattern. Gotcha worth recording: Jinja2 evaluates its tags even inside HTML
+  comments, so the template's explanatory header comment is phrased to avoid a
+  literal double-brace placeholder (an early draft rendered a placeholder in a
+  comment and failed with an 'undefined' error). Tests drive the example
+  through the PURE plan_build so they exercise the whole pipeline short of the
+  PDF write without WeasyPrint's native libs, matching how the rest of the
+  suite stays runnable here. No .gitignore change needed: build/, *.pdf, and
+  .prototyper/ are already ignored, so example builds/history stay untracked
+  while the source template/data/config are committed.
+

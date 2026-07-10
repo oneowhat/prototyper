@@ -1,0 +1,7 @@
+name,cost,type,text
+Stalwart Guard,2,Unit,"Defender. While this is in play, adjacent allies take 1 less damage."
+Swift Scout,1,Unit,Haste. Draw a card when this enters play.
+Arcane Bolt,3,Spell,Deal 4 damage to any target.
+Healing Light,2,Spell,Restore 5 health to a unit or player.
+Ancient Dragon,7,Unit,"Flying. When this attacks, deal 2 damage to all enemy units."
+Market Square,0,Location,"At the start of your turn, gain 1 gold."

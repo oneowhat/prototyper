@@ -14,5 +14,5 @@
 - [x] Build live browser preview server
 - [x] Add file watcher with PDF rebuild trigger
 - [x] Wire up `watch` CLI command
-- [ ] Create example starter project
+- [x] Create example starter project
 - [ ] Prepare PyPI packaging and publish
