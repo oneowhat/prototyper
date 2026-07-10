@@ -1,16 +1,18 @@
 """Command-line entry point for prototyper.
 
 This module wires up the top-level argument parser and the subcommands
-described in the PRD (`build`, `watch`, `note`). At the scaffold stage the
-subcommands are registered but not yet implemented — each raises
-``NotImplementedError`` so later tasks can fill them in against a stable
-CLI surface. Keeping this stdlib-only (argparse) means the package
-imports and the CLI runs without pulling in rendering dependencies.
+described in the PRD (`build`, `watch`, `note`). The parser is stdlib-only
+(argparse) and the heavy pipeline imports (Jinja2/WeasyPrint, pulled in by
+:mod:`prototyper.build`) are deferred into each subcommand handler, so
+``prototyper --version`` / ``--help`` and unrelated subcommands still work
+even before the rendering dependencies are importable. ``watch`` and
+``note`` remain registered but unimplemented until their tasks land.
 """
 
 from __future__ import annotations
 
 import argparse
+import sys
 from typing import Sequence
 
 from . import __version__
@@ -20,6 +22,19 @@ def _add_build(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser(
         "build",
         help="Render the project's data + template into a print-ready PDF.",
+    )
+    parser.add_argument(
+        "project",
+        nargs="?",
+        default=".",
+        help="Path to the project directory or its project.yaml "
+        "(default: current directory).",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        default=None,
+        help="Output PDF path (default: <project>/build/<name>.pdf).",
     )
     parser.set_defaults(func=_cmd_build)
 
@@ -41,7 +56,27 @@ def _add_note(subparsers: argparse._SubParsersAction) -> None:
 
 
 def _cmd_build(args: argparse.Namespace) -> int:
-    raise NotImplementedError("build is not implemented yet")
+    # Imported lazily so `--version`/`--help` and other subcommands don't
+    # require the rendering stack (Jinja2/WeasyPrint) to be importable.
+    from .build import run_build
+    from .config import ConfigError
+    from .data import DataError
+    from .pack import PackError
+    from .pdf import PdfError
+    from .render import RenderError
+    from .sizing import SizeError
+
+    try:
+        plan = run_build(args.project, args.output)
+    except (ConfigError, DataError, SizeError, PackError, RenderError, PdfError) as exc:
+        print(f"build failed: {exc}", file=sys.stderr)
+        return 1
+
+    print(
+        f"Built {plan.output_path} — {len(plan.components)} component(s) "
+        f"on {len(plan.layout.sheets)} sheet(s)."
+    )
+    return 0
 
 
 def _cmd_watch(args: argparse.Namespace) -> int:

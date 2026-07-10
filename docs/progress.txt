@@ -209,3 +209,35 @@ Why: This is the stage that turns the upstream pure-geometry results into an
   base_url (defaulting to the output's parent) so relative template assets
   (images/fonts) resolve, and mkdir -p's the output directory.
 
+## 2026-07-10 — Task: Wire up `build` CLI command
+Changed: Added src/prototyper/build.py (BuildPlan dataclass,
+  default_output_path, plan_build, run_build) chaining config -> data ->
+  sizing -> pack -> render -> cutlines -> pdf into a print-ready PDF, wired
+  the `build` subcommand in src/prototyper/cli.py (project path arg +
+  -o/--output, clean error reporting), and tests/test_build.py covering the
+  planning stage, pagination, cut-line toggle, output-path defaulting/
+  override, and CLI error/success paths.
+Why: This is the first end-to-end command — it joins the previously-built,
+  independently-tested stage modules. Split the pipeline in two mirroring
+  the pipeline's own geometry-vs-render split: plan_build is a PURE function
+  running every stage EXCEPT the PDF write, and run_build adds the one
+  WeasyPrint call. The split matters because WeasyPrint's native
+  (Pango/Cairo/GObject) libs aren't loadable in this environment, so keeping
+  planning pure makes the bulk of the build testable here; the two tests
+  that need a real PDF skip cleanly (guarded by an import probe) exactly as
+  test_pdf.py does. build.py lets each stage's own descriptive exception
+  propagate unchanged (it adds no wrapper error type) so the CLI can render
+  any of them as one "build failed: <msg>" line to stderr with exit code 1
+  and no traceback — the failure modes are already well-worded by the stage
+  modules. The CLI keeps the heavy imports (build -> Jinja2/WeasyPrint) lazy
+  inside _cmd_build so `--version`/`--help` and unrelated subcommands still
+  run before the rendering stack is importable, preserving the scaffold's
+  stdlib-only-surface property. Default output is <project>/build/<name>.pdf:
+  project-local, predictable, easy to find and gitignore; -o overrides it.
+  Config's margin/gutter length STRINGS are resolved to inches here via
+  sizing.parse_length (the seam pack.py's docstring anticipated), and cut
+  lines are computed only when layout.cut_lines is set (else None -> pdf.py
+  draws none). Automatic build-history logging (PRD Design memory) is
+  deliberately left to its own next task; this command does render-to-PDF
+  only.
+
