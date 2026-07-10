@@ -378,3 +378,41 @@ Why: This is the PRD watch command's "PDF rebuild trigger" loop — the
   threading.Event so stop() ends the loop promptly, and construction
   load_project()s up front (fail loud on a bad project before any polling).
 
+## 2026-07-10 — Task: Wire up `watch` CLI command
+Changed: Added prototyper.watch.WatchSession (orchestrates the preview server
+  and the PDF-rebuild watcher as one session with start/run/stop/close +
+  context-manager lifecycle), fleshed out the `watch` subcommand in cli.py
+  (project arg, -o/--output, --index, --host, --port, --poll-interval,
+  --no-preview, --no-build; clean error reporting; Ctrl-C handling), and added
+  tests/test_watch_cli.py covering session construction/validation, preview
+  serving, initial + on-change rebuilds, build-error resilience, and the CLI
+  wiring (bad-project error, lifecycle, flag pass-through, cwd default).
+Why: This is the PRD's `watch` command — the one command that combines the two
+  fast-feedback loops the two previous tasks built standalone: the live browser
+  preview (PreviewServer) for styling and the PDF-rebuild trigger
+  (ProjectWatcher + make_rebuilder) for true page layout. WatchSession is the
+  join point, mirroring how build.py joined the pure stage modules; the CLI
+  handler stays thin (arg parsing, print/reporting hooks, Ctrl-C). Split the
+  lifecycle so failure modes surface before the blocking loop: __init__
+  load_project()s and binds the preview socket, so a bad project (ConfigError)
+  or a taken port (OSError) both exit 1 with one clean "watch failed:" line
+  rather than a traceback mid-run. start() runs the preview server on a DAEMON
+  thread so run() can block the MAIN thread on the watch loop — that placement
+  is deliberate: Ctrl-C must land on the main thread to end the session, which
+  the CLI catches to stop()/close() cleanly (exit 0). start() also does one
+  initial build (initial_build, default on) so an up-to-date PDF exists before
+  the first edit; like every rebuild it goes through make_rebuilder, so a
+  startup template error is reported via on_error and never aborts the session
+  (same resilience-in-the-middle stance as the preview server's error page and
+  the watcher's caught rebuilds). Either loop is independently disableable
+  (--no-preview / --no-build) for a headless rebuild-only watch or a
+  preview-only session (which run() serves by waiting on an Event instead of
+  polling). host/port/poll_interval are None-sentinel in the session signature
+  and only passed through from the CLI when the user set them, so the preview
+  and watcher module defaults stay the single source of truth. Preview imports
+  (Jinja2) stay lazy inside WatchSession so importing prototyper.watch alone
+  still needs no rendering stack, consistent with the rest of the CLI surface.
+  The rebuild reporting hooks (on_change/on_rebuild/on_error) are injected so
+  the session core prints nothing itself and tests stub the build to verify
+  wiring without WeasyPrint.
+

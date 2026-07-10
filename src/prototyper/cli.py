@@ -5,8 +5,7 @@ described in the PRD (`build`, `watch`, `note`). The parser is stdlib-only
 (argparse) and the heavy pipeline imports (Jinja2/WeasyPrint, pulled in by
 :mod:`prototyper.build`) are deferred into each subcommand handler, so
 ``prototyper --version`` / ``--help`` and unrelated subcommands still work
-even before the rendering dependencies are importable. ``watch`` remains
-registered but unimplemented until its task lands.
+even before the rendering dependencies are importable.
 """
 
 from __future__ import annotations
@@ -43,6 +42,53 @@ def _add_watch(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser(
         "watch",
         help="Live-preview a component and rebuild the PDF on file changes.",
+    )
+    parser.add_argument(
+        "project",
+        nargs="?",
+        default=".",
+        help="Path to the project directory or its project.yaml "
+        "(default: current directory).",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        default=None,
+        help="Output PDF path for rebuilds (default: <project>/build/<name>.pdf).",
+    )
+    parser.add_argument(
+        "--index",
+        type=int,
+        default=0,
+        help="Which component (data row) to show in the live preview "
+        "(default: 0, the first).",
+    )
+    parser.add_argument(
+        "--host",
+        default=None,
+        help="Host for the live preview server (default: 127.0.0.1).",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help="Port for the live preview server (default: 8000).",
+    )
+    parser.add_argument(
+        "--poll-interval",
+        type=float,
+        default=None,
+        help="Seconds between file-change checks (default: 1.0).",
+    )
+    parser.add_argument(
+        "--no-preview",
+        action="store_true",
+        help="Disable the live browser preview; only rebuild the PDF.",
+    )
+    parser.add_argument(
+        "--no-build",
+        action="store_true",
+        help="Disable PDF rebuilds; only run the live browser preview.",
     )
     parser.set_defaults(func=_cmd_watch)
 
@@ -101,7 +147,61 @@ def _cmd_build(args: argparse.Namespace) -> int:
 
 
 def _cmd_watch(args: argparse.Namespace) -> int:
-    raise NotImplementedError("watch is not implemented yet")
+    # Imported lazily so `--version`/`--help` and other subcommands don't need
+    # the rendering stack (the session pulls in Jinja2/WeasyPrint on demand).
+    from . import watch as watch_mod
+    from .config import ConfigError
+
+    def on_change(changed: tuple) -> None:
+        names = ", ".join(sorted({p.name for p in changed})) or "input"
+        print(f"Change detected ({names}); rebuilding…")
+
+    def on_rebuild(plan) -> None:
+        print(
+            f"Rebuilt {plan.output_path} — {len(plan.components)} component(s) "
+            f"on {len(plan.layout.sheets)} sheet(s)."
+        )
+
+    def on_error(exc: Exception) -> None:
+        print(f"Rebuild failed: {exc}", file=sys.stderr)
+
+    kwargs = {
+        "index": args.index,
+        "enable_preview": not args.no_preview,
+        "enable_build": not args.no_build,
+        "on_change": on_change,
+        "on_rebuild": on_rebuild,
+        "on_error": on_error,
+    }
+    if args.host is not None:
+        kwargs["host"] = args.host
+    if args.port is not None:
+        kwargs["port"] = args.port
+    if args.poll_interval is not None:
+        kwargs["poll_interval"] = args.poll_interval
+
+    try:
+        # A bad project (ConfigError) or an unavailable preview port (OSError)
+        # both fail here, before the blocking loop — report cleanly, exit 1.
+        session = watch_mod.WatchSession(args.project, args.output, **kwargs)
+    except (ConfigError, OSError) as exc:
+        print(f"watch failed: {exc}", file=sys.stderr)
+        return 1
+
+    session.start()
+    if session.preview_url is not None:
+        print(f"Live preview at {session.preview_url}")
+    if not args.no_build:
+        print(f"Watching {session.project_dir} for changes; rebuilding on save.")
+    print("Press Ctrl-C to stop.")
+    try:
+        session.run()
+    except KeyboardInterrupt:
+        print("\nStopping watch.")
+    finally:
+        session.stop()
+        session.close()
+    return 0
 
 
 def _cmd_note(args: argparse.Namespace) -> int:

@@ -235,3 +235,170 @@ def make_rebuilder(
         return plan
 
     return _rebuild
+
+
+class WatchSession:
+    """Drive the PRD ``watch`` command's two feedback loops as one session.
+
+    The PRD's ``watch`` combines the tool's two fast-iteration loops:
+
+    - the **live browser preview** of a single component
+      (:class:`prototyper.preview.PreviewServer`), for quick styling; and
+    - the **PDF-rebuild trigger** (:class:`ProjectWatcher` +
+      :func:`make_rebuilder`), which rebuilds the whole PDF on any input
+      change so the designer can check true final page layout/packing.
+
+    An edit to the template/data/config therefore both shows up on the next
+    preview refresh (the preview server re-renders every request) and kicks
+    off a full PDF rebuild. Either loop can be turned off independently
+    (``enable_preview`` / ``enable_build``), e.g. to run a headless rebuild
+    watcher with no browser preview.
+
+    Construction validates the project (raising
+    :class:`~prototyper.config.ConfigError`) and binds the preview socket
+    (raising ``OSError`` if the port is taken), so both failure modes surface
+    *before* the blocking loop starts. Lifecycle:
+
+    - :meth:`start` launches the preview server on a background thread and,
+      when ``initial_build`` is set, runs one build so an up-to-date PDF
+      exists immediately.
+    - :meth:`run` blocks (typically the caller's main thread, so ``Ctrl-C``
+      lands here) until :meth:`stop`.
+    - :meth:`stop` ends the loop and the preview server; :meth:`close`
+      releases the socket. The class is also a context manager that stops and
+      closes on exit.
+
+    ``on_change`` (changed paths), ``on_rebuild`` (the successful
+    :class:`~prototyper.build.BuildPlan`), and ``on_error`` (a caught build
+    error) are optional reporting hooks the CLI uses to print progress; a
+    build failure is reported through ``on_error`` but never stops the
+    session, so the designer can fix the input and re-save.
+    """
+
+    def __init__(
+        self,
+        project_path: str | Path,
+        output_path: str | Path | None = None,
+        *,
+        index: int = 0,
+        host: str | None = None,
+        port: int | None = None,
+        poll_interval: float = DEFAULT_POLL_INTERVAL,
+        enable_preview: bool = True,
+        enable_build: bool = True,
+        initial_build: bool = True,
+        on_change: Callable[[tuple[Path, ...]], object] | None = None,
+        on_rebuild: Callable[[object], object] | None = None,
+        on_error: Callable[[Exception], object] | None = None,
+        ignore: Iterable[str | Path] | None = None,
+    ) -> None:
+        # Validate the project up front (fail loud before binding a socket or
+        # starting any thread), and resolve the static-serving root.
+        config = load_project(project_path)
+        self._project_dir = config.project_dir
+        self._initial_build = initial_build
+
+        self._preview_server = None
+        self._server_thread: threading.Thread | None = None
+        self._watcher: ProjectWatcher | None = None
+        self._rebuilder: Callable[[tuple[Path, ...]], object] | None = None
+        self._done = threading.Event()
+
+        if enable_preview:
+            # Imported lazily: the preview server pulls in the render stack
+            # (Jinja2), which merely importing this module should not require.
+            from .preview import DEFAULT_HOST, DEFAULT_PORT, PreviewServer
+
+            self._preview_server = PreviewServer(
+                project_path,
+                index=index,
+                host=DEFAULT_HOST if host is None else host,
+                port=DEFAULT_PORT if port is None else port,
+            )
+
+        if enable_build:
+            self._rebuilder = make_rebuilder(
+                project_path,
+                output_path,
+                on_success=on_rebuild,
+                on_error=on_error,
+            )
+
+            def _on_change(changed: tuple[Path, ...]) -> object:
+                if on_change is not None:
+                    on_change(changed)
+                assert self._rebuilder is not None
+                return self._rebuilder(changed)
+
+            self._watcher = ProjectWatcher(
+                project_path,
+                on_change=_on_change,
+                poll_interval=poll_interval,
+                ignore=ignore,
+            )
+
+    @property
+    def project_dir(self) -> Path:
+        """The project directory being watched / served."""
+        return self._project_dir
+
+    @property
+    def preview_url(self) -> str | None:
+        """The live-preview URL, or ``None`` when the preview loop is off."""
+        if self._preview_server is None:
+            return None
+        return self._preview_server.url
+
+    def start(self) -> None:
+        """Start the preview server thread and run the initial build (if any).
+
+        The preview server runs on a daemon thread so :meth:`run` can block
+        the caller's main thread on the watch loop. When ``initial_build`` was
+        set and the build loop is enabled, one build runs now so an up-to-date
+        PDF exists before the first edit; a failure there is reported via
+        ``on_error`` and does not stop the session.
+        """
+        if self._preview_server is not None:
+            self._server_thread = threading.Thread(
+                target=self._preview_server.serve_forever, daemon=True
+            )
+            self._server_thread.start()
+        if self._initial_build and self._rebuilder is not None:
+            # Empty tuple: no specific file changed, this is the startup build.
+            self._rebuilder(())
+
+    def run(self) -> None:
+        """Block until :meth:`stop` (typically the caller's main thread).
+
+        Runs the polling watch loop when the build loop is enabled; otherwise
+        (preview-only) simply waits so the preview server keeps serving until
+        stopped. Because this blocks the caller's thread, a ``KeyboardInterrupt``
+        (``Ctrl-C``) propagates to the caller to end the session.
+        """
+        if self._watcher is not None:
+            self._watcher.watch()
+        else:
+            self._done.wait()
+
+    def stop(self) -> None:
+        """Signal :meth:`run` to return and stop the preview server."""
+        self._done.set()
+        if self._watcher is not None:
+            self._watcher.stop()
+        if self._preview_server is not None:
+            self._preview_server.shutdown()
+
+    def close(self) -> None:
+        """Release the preview socket and join the server thread."""
+        if self._preview_server is not None:
+            self._preview_server.server_close()
+        if self._server_thread is not None:
+            self._server_thread.join(timeout=5)
+            self._server_thread = None
+
+    def __enter__(self) -> "WatchSession":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.stop()
+        self.close()

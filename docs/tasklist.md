@@ -13,6 +13,6 @@
 - [x] Implement `note` CLI command
 - [x] Build live browser preview server
 - [x] Add file watcher with PDF rebuild trigger
-- [ ] Wire up `watch` CLI command
+- [x] Wire up `watch` CLI command
 - [ ] Create example starter project
 - [ ] Prepare PyPI packaging and publish
