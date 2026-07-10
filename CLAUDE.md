@@ -10,7 +10,7 @@ lays them out on 8.5x11 pages, and outputs print-ready PDFs.
 ## Default workflow
 
 When asked to work on the project without a more specific instruction,
-follow this loop:
+follow these steps in order. If you are given a specific task to work on, skip to step 3.:
 
 1. **Load context** — read `docs/PRD.md` for requirements and
    constraints before making design decisions.
@@ -30,8 +30,7 @@ follow this loop:
    summarizing what changed and the rationale behind the approach taken.
 6. **Commit and push** — once a task's box is checked and its progress
    entry written, commit the change (code, updated `tasklist.md`, and
-   `progress.txt` entry together) and push to the remote before moving
-   on to the next task.
+   `progress.txt` entry together).
 
 If a task is too large or vague to implement directly, break it into
 smaller checklist items in `docs/tasklist.md` in place, then proceed
