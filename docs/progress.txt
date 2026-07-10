@@ -140,3 +140,31 @@ Why: This is the PRD's auto-grid page layout — "compute how many components
   of any config surface for it; a break at index 0 or a page boundary is a
   harmless no-op. count=0 yields zero sheets while still reporting the grid.
 
+## 2026-07-10 — Task: Add cut line rendering
+Changed: Added src/prototyper/cutlines.py (CutLine dataclass,
+  cut_lines_for_sheet, cut_lines_for_layout) and tests/test_cutlines.py
+  covering per-edge line placement, full-page spans, gutter/shared-edge
+  dedup, ordering, empty sheets, and integration with the packing engine.
+Why: This is the PRD's cut-line layout hint — "thin registration lines
+  drawn between/around components to guide scissor/paper-cutter trimming;
+  not bleed". Kept it pure geometry like pack.py: it consumes a packed
+  Sheet's Placements and returns line segments in inches, leaving stroke
+  styling (width/colour/dash — a PRD open question) to the later PDF stage.
+  Chose full-page grid lines rather than per-corner crop marks because the
+  packing grid is regular: every component in a column shares the same
+  left/right trim x and every one in a row the same top/bottom trim y, so a
+  line spanning the whole page at any trim edge runs only through gutters
+  and margins and never crosses a component face — while giving an edge-to-
+  edge guide that matches a straight scissor/guillotine cut and the PRD's
+  "between/around" phrasing (interior lines in gutters, outer lines bound
+  the block). Lines are derived from each sheet's actual placements (not the
+  full grid) so a partially filled last sheet is marked only around the
+  components it holds; coincident edges (abutting components at zero gutter)
+  collapse to one line via a 1e-6in epsilon, matching pack.py's tolerance.
+  Placements are treated as bounding boxes (as pack.py does), so hex-outline
+  cut guides are deferred — the straight-cut model doesn't apply to hexes
+  and Placement carries no shape. Whether cut lines are emitted at all is the
+  caller's call via the existing layout.cut_lines config toggle; this module
+  only computes geometry when asked. cut_lines_for_layout is an ergonomic
+  wrapper that pulls page dimensions from the PackedLayout for the PDF stage.
+

@@ -6,7 +6,7 @@
 - [x] Implement single-component HTML/CSS rendering
 - [x] Implement component size presets and custom sizing
 - [x] Build auto-grid page packing engine
-- [ ] Add cut line rendering
+- [x] Add cut line rendering
 - [ ] Implement PDF assembly from packed sheets
 - [ ] Wire up `build` CLI command
 - [ ] Implement history log with automatic build entries
