@@ -12,7 +12,7 @@
 - [x] Implement history log with automatic build entries
 - [x] Implement `note` CLI command
 - [x] Build live browser preview server
-- [ ] Add file watcher with PDF rebuild trigger
+- [x] Add file watcher with PDF rebuild trigger
 - [ ] Wire up `watch` CLI command
 - [ ] Create example starter project
 - [ ] Prepare PyPI packaging and publish

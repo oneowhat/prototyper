@@ -347,3 +347,34 @@ Why: This is the PRD's "fast styling iteration" feedback loop — a browser
   watch CLI wiring, file watching, and PDF-rebuild trigger are deliberately
   left to their own next tasks.
 
+## 2026-07-10 — Task: Add file watcher with PDF rebuild trigger
+Changed: Added src/prototyper/watch.py (scan_inputs/diff_snapshots pure
+  snapshot+diff helpers, default_ignores, the ProjectWatcher polling driver,
+  and make_rebuilder — an on_change callback that runs run_build) and
+  tests/test_watch.py covering snapshotting, ignore pruning, diffing,
+  add/edit/delete detection, the rebuild-loop guard, the poll/watch/stop
+  lifecycle, and the build integration (stubbed).
+Why: This is the PRD watch command's "PDF rebuild trigger" loop — the
+  counterpart to the already-built preview server, checking true final page
+  layout by rebuilding the whole PDF on any input change. Built standalone
+  (the watch CLI command that combines it with the preview server is the next
+  task), mirroring how preview.py landed before its command. Kept the
+  pipeline's pure-vs-side-effect split so change detection is fully testable
+  without threads/sockets/WeasyPrint: scan_inputs returns a
+  {path: (mtime, size)} snapshot and diff_snapshots compares two, while
+  ProjectWatcher holds the current snapshot and fires an injectable on_change
+  on each poll. Chose polling (compare mtime+size on an interval) over OS
+  filesystem events to stay stdlib-only and dependency-free, consistent with
+  the rest of the tool — no watchdog dependency added to pyproject. The
+  rebuild action is injected (make_rebuilder wraps run_build) rather than
+  baked in, so the watcher core needs no rendering stack and tests stub the
+  build; make_rebuilder catches the pipeline errors so a template typo shows
+  up via on_error but never kills a long-running watch session (same
+  resilience-in-the-middle stance as the preview server's in-browser error
+  page). Critically, .prototyper/ and the default build/ output dir are
+  ignored by default (default_ignores) because a rebuild WRITES both — watching
+  them would make every rebuild trigger another, an infinite loop; extra
+  paths (e.g. a build -o override) are passable via ignore. watch() waits on a
+  threading.Event so stop() ends the loop promptly, and construction
+  load_project()s up front (fail loud on a bad project before any polling).
+
