@@ -8,9 +8,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get purge -y curl \
     && rm -rf /var/lib/apt/lists/*
 
+RUN useradd --create-home --shell /bin/bash agent
+
 WORKDIR /workspace
+RUN chown agent:agent /workspace
 
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
+
+USER agent
 
 ENTRYPOINT ["entrypoint.sh"]

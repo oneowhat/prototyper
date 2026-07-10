@@ -30,6 +30,40 @@ GITHUB_REPO="${GITHUB_REPO:-oneowhat/prototyper}"
 BRANCH="${BRANCH:-autonomous/build-v1}"
 MAX_ITERS="${MAX_ITERS:-20}"
 WORKDIR="/workspace/repo"
+OUT_DIR="${OUT_DIR:-/workspace/out}"
+
+# Regardless of whether `git push` actually succeeds, write a bundle of
+# the current branch to a host-mounted directory (if one was given via
+# -v ...:/workspace/out). This is the recovery path when push fails or
+# the run is otherwise interrupted: the container's own filesystem
+# disappears on exit (usually run with --rm), so this bundle mount is
+# the only thing that survives that.
+backup_branch() {
+    if [ -d "$OUT_DIR" ] && [ -w "$OUT_DIR" ]; then
+        local bundle="$OUT_DIR/${BRANCH//\//-}.bundle"
+        git bundle create "$bundle" "$BRANCH" >/dev/null
+        echo "[entrypoint] Backed up '$BRANCH' to $bundle"
+    else
+        echo "[entrypoint] WARNING: no writable backup dir at $OUT_DIR" \
+             "(mount one with -v <host-dir>:$OUT_DIR) — if the push below" \
+             "fails, this commit only exists in the container and will be" \
+             "lost when it exits." >&2
+    fi
+}
+
+# Confirms HEAD actually reached the remote branch — don't just trust
+# claude's own report of whether `git push` succeeded.
+verify_pushed() {
+    local remote_head local_head
+    remote_head="$(git ls-remote origin "refs/heads/$BRANCH" | cut -f1)"
+    local_head="$(git rev-parse HEAD)"
+    if [ "$remote_head" != "$local_head" ]; then
+        echo "[entrypoint] WARNING: local HEAD ($local_head) is not published" \
+             "to origin/$BRANCH (remote has '${remote_head:-nothing}')." \
+             "Recover it from the backup bundle above." >&2
+        return 1
+    fi
+}
 
 git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git" "$WORKDIR"
 cd "$WORKDIR"
@@ -57,7 +91,14 @@ for i in $(seq 1 "$MAX_ITERS"); do
 
     before="$(md5sum docs/tasklist.md)"
 
-    claude --dangerously-skip-permissions -p "$TASK_PROMPT"
+    if ! claude --dangerously-skip-permissions -p "$TASK_PROMPT"; then
+        echo "[entrypoint] claude exited non-zero on iteration $i" >&2
+    fi
+
+    # Always back up and verify, regardless of how the above went — this
+    # is the whole point of the safety net.
+    backup_branch
+    verify_pushed || true
 
     after="$(md5sum docs/tasklist.md)"
     if [ "$before" = "$after" ]; then

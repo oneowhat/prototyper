@@ -55,16 +55,34 @@ security find-generic-password -a "$USER" -s prototyper-anthropic-api-key -w \
   > ~/.secrets/prototyper/anthropic_api_key
 security find-generic-password -a "$USER" -s prototyper-github-token -w \
   > ~/.secrets/prototyper/github_token
-chmod 600 ~/.secrets/prototyper/*
+chmod 644 ~/.secrets/prototyper/*
+```
+
+(644, not 600 — the container runs as its own non-root `agent` user, a
+different uid than yours, so it needs read access. The containing
+directory stays `700`, which is what actually keeps other accounts on
+your machine out.)
+
+```sh
+mkdir -p ~/prototyper-agent-backups
 
 docker run --rm \
   -v ~/.secrets/prototyper:/run/secrets:ro \
+  -v ~/prototyper-agent-backups:/workspace/out \
   -e ANTHROPIC_API_KEY_FILE=/run/secrets/anthropic_api_key \
   -e GITHUB_TOKEN_FILE=/run/secrets/github_token \
   prototyper-agent
 
 rm -f ~/.secrets/prototyper/anthropic_api_key ~/.secrets/prototyper/github_token
 ```
+
+The `/workspace/out` mount matters even when everything works: the
+container's own filesystem disappears when it exits (`--rm`), so it's
+the only thing that survives a failed push. After every task attempt,
+`entrypoint.sh` writes a git bundle there and verifies the commit
+actually reached `origin/<branch>` — not just that `claude` claimed it
+did. See "Recovering from a failed push" below if you ever see a
+`WARNING: local HEAD ... is not published` line in the output.
 
 Other secrets managers (1Password CLI, `pass`, etc.) work the same way —
 just swap the `security find-generic-password` calls for the equivalent
@@ -97,3 +115,16 @@ merge into `main`. Re-running the container continues from the current
 state of `docs/tasklist.md` on that branch — pass the same `BRANCH` value
 and it'll pick up where it left off; running with a fresh default branch
 name starts the task list over from `main`.
+
+## Recovering from a failed push
+
+If the token lacks write access, expires, or GitHub is unreachable, the
+commit still exists — check `~/prototyper-agent-backups/` for a
+`<branch>.bundle` file and pull it into your local checkout:
+
+```sh
+git fetch ~/prototyper-agent-backups/autonomous-build-v1.bundle autonomous/build-v1:autonomous/build-v1
+```
+
+That creates/updates a local branch from the bundle, which you can then
+push yourself once the credential issue is fixed.
