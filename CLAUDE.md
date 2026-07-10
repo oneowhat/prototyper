@@ -28,6 +28,10 @@ follow this loop:
    Only then check the box in `docs/tasklist.md` for that task and
    append an entry to `docs/progress.txt` (see its header for format)
    summarizing what changed and the rationale behind the approach taken.
+6. **Commit and push** — once a task's box is checked and its progress
+   entry written, commit the change (code, updated `tasklist.md`, and
+   `progress.txt` entry together) and push to the remote before moving
+   on to the next task.
 
 If a task is too large or vague to implement directly, break it into
 smaller checklist items in `docs/tasklist.md` in place, then proceed
