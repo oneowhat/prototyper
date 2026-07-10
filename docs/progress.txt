@@ -446,3 +446,40 @@ Why: This is the PRD's "a first project works with minimal configuration"
   .prototyper/ are already ignored, so example builds/history stay untracked
   while the source template/data/config are committed.
 
+## 2026-07-10 — Task: Prepare PyPI packaging and publish
+Changed: Wrote the real README.md (project long description for PyPI: intro,
+  features, install, quick start, command table, dev + release steps), added
+  a MIT LICENSE file, and tightened pyproject.toml — version is now dynamic
+  (single-sourced from src/prototyper/__init__.py via [tool.hatch.version]
+  instead of a hardcoded literal), license-files=["LICENSE"], added
+  Repository/Issues URLs, and a [tool.hatch.build.targets.sdist] exclude list
+  dropping harness/dev-only files (CLAUDE.md, Dockerfile, docker/,
+  docs/autonomous-run.md, .pytest_cache, .github) from the published archive.
+  Added tests/test_packaging.py asserting the README is substantial and set as
+  the readme, the LICENSE exists and is MIT, the version is single-sourced (not
+  a literal in [project]), and — by actually building a wheel — that its
+  METADATA carries Description-Content-Type: text/markdown, a non-empty
+  description, the package version, the MIT classifier, and the console entry
+  point.
+Why: This is the PRD's distribution goal — "a real, pip-installable package
+  with a console-script CLI, published to PyPI". The scaffold already built,
+  but the metadata a user/PyPI actually sees was thin: the readme file was
+  EMPTY, so the wheel METADATA had no long description and no
+  Description-Content-Type at all (PyPI would show a blank project page), and
+  the declared MIT license had no LICENSE file to back it. Filling the README
+  and adding LICENSE fixes both; `twine check` now PASSES on both sdist and
+  wheel (the canonical "is this uploadable" gate). Made the version dynamic so
+  it lives in exactly one place — the literal in pyproject.toml and the one in
+  __init__.py were already both 0.1.0 and would silently drift on the next
+  bump; now a release is a one-line change to __version__. Scoped the sdist
+  because a published source archive shouldn't ship build-agent instructions
+  (CLAUDE.md) or the container harness (Dockerfile/docker/) — kept src/, tests/,
+  examples/, and the user-facing docs (PRD, tasklist, progress). The build test
+  skips cleanly when the `build`/`hatchling` backends aren't importable, matching
+  how the WeasyPrint-dependent tests degrade, so the suite stays green anywhere.
+  NOT done: the actual `twine upload` to PyPI. Publishing is an irreversible,
+  outward-facing action requiring PyPI account credentials this environment
+  doesn't hold, so it can't and shouldn't be automated here — the package is
+  fully upload-ready and the exact publish procedure (build -> twine check ->
+  twine upload) is documented in README's "Building and publishing a release".
+

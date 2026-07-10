@@ -15,4 +15,4 @@
 - [x] Add file watcher with PDF rebuild trigger
 - [x] Wire up `watch` CLI command
 - [x] Create example starter project
-- [ ] Prepare PyPI packaging and publish
+- [x] Prepare PyPI packaging and publish
