@@ -1,6 +1,6 @@
 # Task List
 
-- [ ] Scaffold Python package structure
+- [x] Scaffold Python package structure
 - [ ] Define project.yaml schema and loader
 - [ ] Implement CSV data loader
 - [ ] Implement single-component HTML/CSS rendering
