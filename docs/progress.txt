@@ -1,0 +1,11 @@
+Progress log
+============
+
+One entry per completed task from tasklist.md. Newest entries at the
+bottom. Format:
+
+## YYYY-MM-DD — Task: <task subject from tasklist.md>
+Changed: <files/behavior added or modified, one line>
+Why: <rationale for the approach taken, tradeoffs, anything a future
+      reader would need to understand the decision without re-reading
+      the diff>
