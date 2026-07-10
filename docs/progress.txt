@@ -168,3 +168,44 @@ Why: This is the PRD's cut-line layout hint — "thin registration lines
   only computes geometry when asked. cut_lines_for_layout is an ergonomic
   wrapper that pulls page dimensions from the PackedLayout for the PDF stage.
 
+## 2026-07-10 — Task: Implement PDF assembly from packed sheets
+Changed: Added src/prototyper/pdf.py (PdfError, CutLineStyle +
+  DEFAULT_CUT_LINE_STYLE, build_document_html, assemble_pdf) turning a
+  PackedLayout + per-component rendered HTML + optional per-sheet cut lines
+  into a print-ready multi-page PDF, and tests/test_pdf.py covering document
+  structure, component placement/index mapping, cut-line rendering + styling,
+  and every error path. Installed weasyprint (already a declared dependency)
+  into the dev environment.
+Why: This is the stage that turns the upstream pure-geometry results into an
+  actual document. Split deliberately in two: build_document_html is a PURE
+  function that assembles the single HTML/CSS document WeasyPrint paints, and
+  assemble_pdf is a thin wrapper that hands it to WeasyPrint (imported LAZILY)
+  and writes the bytes. The split matters for two reasons: (1) it mirrors the
+  pipeline's geometry-vs-render separation, and (2) WeasyPrint needs native
+  Pango/Cairo/GObject libraries that aren't installable without root in this
+  environment, so keeping all logic + validation in the pure builder means the
+  bulk is fully testable here; the one test that needs a real PDF skips
+  cleanly when those libs are absent (a plain importorskip won't do — the
+  missing libs raise OSError, not ImportError, so the helper catches
+  Exception). All input validation lives in build_document_html and runs
+  BEFORE the lazy import, so assemble_pdf surfaces bad-input errors as
+  PdfError even where WeasyPrint can't load. Layout model: @page matches the
+  layout's page size (not hardcoded, so custom page dims flow through); each
+  Sheet is one position:relative page-sized block; page breaks use
+  `.sheet + .sheet { break-before: page }` (break BEFORE every sheet after the
+  first) rather than break-after, which avoids WeasyPrint emitting a trailing
+  blank page when content exactly fills the last page. Each component is an
+  absolute-positioned div at its Placement's trim box with the rendered HTML
+  embedded verbatim; components are keyed by Placement.index (data order).
+  Cut lines are drawn first (so component faces paint over any coincident
+  edge) as zero-content divs whose single border-left/border-top is the
+  stroke, centred on the trim edge with a negative half-width margin — using
+  border shorthand lets CutLineStyle support solid/dashed/dotted for free.
+  pdf.py takes cut lines PRECOMPUTED (Sequence per sheet) rather than
+  computing them, staying decoupled from cutlines.py exactly as pack/cutlines
+  are decoupled; the build command will decide via layout.cut_lines whether to
+  pass them. Cut-line styling is a PRD open question, so CutLineStyle defaults
+  to a thin (0.25pt) solid black line and is overridable. assemble_pdf takes
+  base_url (defaulting to the output's parent) so relative template assets
+  (images/fonts) resolve, and mkdir -p's the output directory.
+

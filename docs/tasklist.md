@@ -7,7 +7,7 @@
 - [x] Implement component size presets and custom sizing
 - [x] Build auto-grid page packing engine
 - [x] Add cut line rendering
-- [ ] Implement PDF assembly from packed sheets
+- [x] Implement PDF assembly from packed sheets
 - [ ] Wire up `build` CLI command
 - [ ] Implement history log with automatic build entries
 - [ ] Implement `note` CLI command
