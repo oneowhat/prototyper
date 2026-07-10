@@ -307,3 +307,43 @@ Why: This is the PRD's manual half of "Design memory" — the free-text
   positional and project an optional trailing positional (default ".") to
   mirror the `build` command's argument shape.
 
+## 2026-07-10 — Task: Build live browser preview server
+Changed: Added src/prototyper/preview.py (PreviewError, render_preview, and
+  the PreviewServer class) — a local HTTP server that live-previews a single
+  rendered component — and tests/test_preview.py covering pure rendering,
+  index selection/bounds, live re-read on edit, HTTP serving of the preview
+  and of static assets, the in-browser error page, and construction-time
+  project validation.
+Why: This is the PRD's "fast styling iteration" feedback loop — a browser
+  preview of ONE rendered component, explicitly NOT the paginated PDF. Kept it
+  standalone: the `watch` command (a later task) will drive it alongside the
+  PDF-rebuild trigger, so this task builds only the server. Mirrored the
+  pipeline's pure-vs-side-effect split: render_preview is a pure function
+  (project path + component index -> a full HTML document) with no socket, so
+  the rendering logic is unit-testable, and PreviewServer is a thin
+  ThreadingHTTPServer wrapper around it. render_preview re-reads config/CSV/
+  template on EVERY call, which is exactly what makes a browser refresh reflect
+  on-disk edits (verified by a test) and what the future file-watcher will lean
+  on. It wraps the one component in a white frame sized to its physical trim box
+  (reusing sizing.resolve_size, the same width/height the PDF stage boxes it in)
+  on a neutral backdrop, so the designer sees true finished size while styling;
+  hex shape isn't special-cased, matching pdf.py's bounding-box treatment. The
+  server routes `/` (and /index.html) to a live re-render and delegates every
+  other path to SimpleHTTPRequestHandler with directory=project_dir, so the
+  template's relative asset paths (assets/images, fonts) resolve exactly as they
+  do against the PDF stage's base_url — reusing stdlib static serving instead of
+  reimplementing content-types/ranges. Kept the loaders' fail-loud stance at the
+  edges but made the running server resilient in the middle: it binds on
+  construction and load_project()s up front (a bad project fails before a socket
+  is opened), yet a render failure mid-session (e.g. a template typo while
+  editing) is caught and shown as a 500 HTML error page in the browser rather
+  than dropping the connection, so the designer fixes and refreshes. Responses
+  send Cache-Control: no-store so a refresh always re-renders. Each server gets
+  its OWN dynamically-created handler subclass carrying its project_path/index
+  as class attributes, so two concurrent PreviewServers can't clobber each
+  other's render context. Bound to 127.0.0.1 by default (local dev tool, not a
+  public server); host/port/index are injectable and port 0 (ephemeral) is what
+  the tests use to run real HTTP requests without a fixed-port collision. The
+  watch CLI wiring, file watching, and PDF-rebuild trigger are deliberately
+  left to their own next tasks.
+

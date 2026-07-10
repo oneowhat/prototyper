@@ -11,7 +11,7 @@
 - [x] Wire up `build` CLI command
 - [x] Implement history log with automatic build entries
 - [x] Implement `note` CLI command
-- [ ] Build live browser preview server
+- [x] Build live browser preview server
 - [ ] Add file watcher with PDF rebuild trigger
 - [ ] Wire up `watch` CLI command
 - [ ] Create example starter project
