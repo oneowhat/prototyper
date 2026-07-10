@@ -17,8 +17,7 @@ only talks back to the outside world by pushing commits to a branch.
      touch your other repos or account settings.
 2. Have an `ANTHROPIC_API_KEY` available (from the Anthropic Console).
 
-Keep both out of shell history / files that get committed — pass them as
-environment variables at run time (see below).
+Keep both out of shell history and out of anything that gets committed.
 
 ## Build the image
 
@@ -28,12 +27,32 @@ docker build -t prototyper-agent .
 
 ## Run it
 
+Prefer mounting secrets as read-only files over passing them as `-e`
+values. `-e KEY=value` on the command line lands in shell history and is
+readable in plaintext via `docker inspect`/`docker top` by anyone with
+Docker daemon access; a file mount only exposes a path in that metadata.
+
 ```sh
+mkdir -p ~/.secrets/prototyper
+chmod 700 ~/.secrets/prototyper
+printf '%s' "$ANTHROPIC_API_KEY" > ~/.secrets/prototyper/anthropic_api_key
+printf '%s' "$GITHUB_TOKEN"      > ~/.secrets/prototyper/github_token
+chmod 600 ~/.secrets/prototyper/*
+
 docker run --rm \
-  -e ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
-  -e GITHUB_TOKEN="$GITHUB_TOKEN" \
+  -v ~/.secrets/prototyper:/run/secrets:ro \
+  -e ANTHROPIC_API_KEY_FILE=/run/secrets/anthropic_api_key \
+  -e GITHUB_TOKEN_FILE=/run/secrets/github_token \
   prototyper-agent
 ```
+
+If you use a secrets manager (macOS Keychain, 1Password CLI, `pass`,
+etc.), write its output to those files at run time instead of keeping
+them at rest — e.g. `op read op://vault/anthropic/key > ~/.secrets/prototyper/anthropic_api_key`.
+
+Passing `-e ANTHROPIC_API_KEY=...` / `-e GITHUB_TOKEN=...` directly still
+works as a fallback (`entrypoint.sh` checks the `_FILE` variables first),
+but the file-mount form above is the recommended default.
 
 Optional environment variables:
 

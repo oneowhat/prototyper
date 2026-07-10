@@ -1,8 +1,30 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY must be set}"
-: "${GITHUB_TOKEN:?GITHUB_TOKEN must be set (repo-scoped PAT with contents:write)}"
+# Resolves a secret from <VAR>_FILE (a mounted read-only file) if set,
+# otherwise falls back to <VAR> directly. Preferring the file form keeps
+# the value out of `docker inspect`/`ps` output.
+resolve_secret() {
+    local var_name="$1"
+    local file_var="${var_name}_FILE"
+    local file_path="${!file_var:-}"
+    if [ -n "$file_path" ]; then
+        if [ ! -r "$file_path" ]; then
+            echo "[entrypoint] ${file_var}=${file_path} is not readable" >&2
+            exit 1
+        fi
+        cat "$file_path"
+    else
+        printf '%s' "${!var_name:-}"
+    fi
+}
+
+ANTHROPIC_API_KEY="$(resolve_secret ANTHROPIC_API_KEY)"
+GITHUB_TOKEN="$(resolve_secret GITHUB_TOKEN)"
+export ANTHROPIC_API_KEY
+
+: "${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY or ANTHROPIC_API_KEY_FILE}"
+: "${GITHUB_TOKEN:?set GITHUB_TOKEN or GITHUB_TOKEN_FILE (repo-scoped PAT with contents:write)}"
 
 GITHUB_REPO="${GITHUB_REPO:-oneowhat/prototyper}"
 BRANCH="${BRANCH:-autonomous/build-v1}"
