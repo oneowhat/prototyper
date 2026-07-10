@@ -2,7 +2,7 @@
 
 - [x] Scaffold Python package structure
 - [x] Define project.yaml schema and loader
-- [ ] Implement CSV data loader
+- [x] Implement CSV data loader
 - [ ] Implement single-component HTML/CSS rendering
 - [ ] Implement component size presets and custom sizing
 - [ ] Build auto-grid page packing engine

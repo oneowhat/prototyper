@@ -44,3 +44,21 @@ Why: Modeled the schema straight from the PRD's project folder convention
   (0.5in margin, 0.1in gutter, cut_lines on) chosen for home-printing
   safety and PRD alignment.
 
+## 2026-07-10 — Task: Implement CSV data loader
+Changed: Added src/prototyper/data.py (frozen Dataset dataclass with
+  fieldnames/rows + __len__, DataError, load_data loader) and
+  tests/test_data.py covering row parsing, header/value normalization,
+  BOM/UTF-8/blank-line/short-row tolerance, and every error path.
+Why: Modeled the output as the PRD's input contract — an ordered list of
+  rows, one per component instance, each a {header: value} mapping — so
+  the renderer can instantiate one component per row and resolve
+  placeholders by column name. Values stay strings because CSV is untyped
+  and formatting is the template's job. Used csv.reader (not DictReader)
+  to keep full control over header validation and jagged-row handling.
+  The loader is strict about corruption that silently ruins a print run
+  (duplicate/blank headers = ambiguous placeholders, rows wider than the
+  header = misaligned data, header-only files = nothing to build all
+  raise DataError) but forgiving about harmless spreadsheet artifacts
+  (utf-8-sig strips Excel's BOM, trailing empty cells pad to "", blank
+  lines skip). Errors carry the 1-based line number for hand-editing.
+
