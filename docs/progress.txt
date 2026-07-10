@@ -9,3 +9,18 @@ Changed: <files/behavior added or modified, one line>
 Why: <rationale for the approach taken, tradeoffs, anything a future
       reader would need to understand the decision without re-reading
       the diff>
+
+## 2026-07-10 — Task: Scaffold Python package structure
+Changed: Added pyproject.toml (hatchling, `prototyper` console script,
+  runtime deps jinja2/weasyprint/pyyaml declared for later tasks),
+  src/prototyper/{__init__.py,__main__.py,cli.py}, and
+  tests/test_scaffold.py covering version, CLI entry, and `python -m`.
+Why: Named the package `prototyper` to match the `.prototyper/` history
+  folder convention used throughout the PRD. Chose a src/ layout so tests
+  run against the installed import path, not the repo root. The scaffold
+  is deliberately stdlib-only (argparse, no click) so the package imports
+  and the CLI runs before rendering deps are installed; the build/watch/
+  note subcommands are registered (stable CLI surface) but raise
+  NotImplementedError until their tasks land. pytest is configured via
+  pyproject (pythonpath=src) so `pytest` works with no install step.
+

@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "prototyper"
+version = "0.1.0"
+description = "Build print-ready PDF sheets of tabletop game components from HTML/CSS templates and CSV data."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "prototyper contributors" }]
+keywords = ["tabletop", "cards", "print", "pdf", "board-game", "cli"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Games/Entertainment :: Board Games",
+    "Topic :: Printing",
+]
+
+# Runtime dependencies are introduced by the tasks that first need them
+# (templating, PDF rendering, config parsing, watching). The scaffold
+# itself is stdlib-only so the package imports without them.
+dependencies = [
+    "jinja2>=3.1",
+    "weasyprint>=60",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
+
+[project.scripts]
+prototyper = "prototyper.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/prototyper/prototyper"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/prototyper"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
