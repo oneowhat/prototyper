@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Test / lint / type-check caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Secrets / local env
+.env
+.env.*
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Generated output from local/example project builds — the template,
+# data, and config are source; rendered PDFs and history logs are not.
+*.pdf
+.prototyper/
