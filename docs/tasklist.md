@@ -4,7 +4,7 @@
 - [x] Define project.yaml schema and loader
 - [x] Implement CSV data loader
 - [x] Implement single-component HTML/CSS rendering
-- [ ] Implement component size presets and custom sizing
+- [x] Implement component size presets and custom sizing
 - [ ] Build auto-grid page packing engine
 - [ ] Add cut line rendering
 - [ ] Implement PDF assembly from packed sheets

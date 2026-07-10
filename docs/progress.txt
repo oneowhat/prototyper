@@ -86,3 +86,25 @@ Why: This is the smallest rendering unit the PRD's pipeline needs — "one
   field references are both wrapped in RenderError with a human-readable
   message (syntax errors carry the line number).
 
+## 2026-07-10 — Task: Implement component size presets and custom sizing
+Changed: Added src/prototyper/sizing.py (ResolvedSize dataclass, SizeError,
+  the _PRESETS table, parse_length/resolve_preset/resolve_size/list_presets)
+  and tests/test_sizing.py covering preset resolution + name normalization,
+  unit parsing/conversion, and every error path.
+Why: This is the step the config loader deliberately deferred — it captured
+  component size verbatim (a preset name xor raw width/height strings) so
+  this module could turn it into concrete numbers the packing/rendering
+  stages compute with. Canonicalized to inches (float) because the output
+  page is 8.5x11in, making inches the natural basis for grid-packing math;
+  parse_length converts the CSS absolute units (in/mm/cm/pt/pc/px) and
+  treats a bare number as inches for ergonomics. Shipped the PRD's example
+  presets (poker/bridge/tarot + mini, hex-token, square-token); ResolvedSize
+  carries a `shape` ("rect"/"hex") so hex tokens are meaningfully distinct
+  from square ones and downstream cut-line/packing code has an outline to
+  key on — custom sizes are always rectangular since the config exposes no
+  shape override. Preset names are normalized (case/space/underscore/hyphen
+  insensitive) so "Hex Token" == "hex-token". Kept the loaders' fail-loud
+  stance: unknown preset (lists the valid ones), unparseable length, unknown
+  unit, and non-positive dimensions all raise SizeError with a clear message.
+  Fit-on-page validation is intentionally left to the packing engine.
+
