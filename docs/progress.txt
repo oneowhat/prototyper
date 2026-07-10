@@ -62,3 +62,27 @@ Why: Modeled the output as the PRD's input contract — an ordered list of
   (utf-8-sig strips Excel's BOM, trailing empty cells pad to "", blank
   lines skip). Errors carry the 1-based line number for hand-editing.
 
+## 2026-07-10 — Task: Implement single-component HTML/CSS rendering
+Changed: Added src/prototyper/render.py (RenderError + render_component,
+  which turns one Jinja2 HTML/CSS template plus one {header: value} data
+  row into the substituted HTML for a single component) and
+  tests/test_render.py covering substitution, autoescaping, filters/
+  conditionals, relative includes, and every error path. Installed jinja2
+  (already a declared dependency) into the dev environment.
+Why: This is the smallest rendering unit the PRD's pipeline needs — "one
+  component defined once, instantiated once per row" — deliberately scoped
+  to produce HTML for a single component; page packing and PDF assembly are
+  later tasks. Row keys are passed as top-level template variables so the
+  PRD's documented {{ name }} placeholder style works directly. Two strict
+  defaults keep it consistent with the config/data loaders' "fail loud on
+  anything that silently ruins a print run" stance: StrictUndefined makes a
+  typo'd placeholder ({{ nmae }}) raise instead of printing a blank card
+  (optional fields remain expressible via the standard `| default('')`
+  filter, which still works under StrictUndefined), and autoescaping is on
+  so data values containing <, & or " can't emit broken HTML — the template
+  supplies markup, data supplies text. The Jinja2 Environment uses a
+  FileSystemLoader rooted at the template's directory so {% include %}/
+  {% extends %} resolve relative to it. Template syntax errors and unknown-
+  field references are both wrapped in RenderError with a human-readable
+  message (syntax errors carry the line number).
+
