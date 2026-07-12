@@ -44,6 +44,24 @@ depends on native libraries (Pango, Cairo, GObject). If a build fails on
 import, see WeasyPrint's
 [platform installation notes](https://doc.courtbouillon.org/weasyprint/stable/first_steps.html).
 
+### macOS (Homebrew)
+
+```sh
+brew install pango gdk-pixbuf libffi
+```
+
+Homebrew installs these under `/opt/homebrew/lib`, but macOS's dynamic
+linker doesn't search there by default — `pip install` will succeed, but
+every `prototyper build` fails with a `dlopen`/`libgobject-2.0-0` error
+until the linker is told where to look:
+
+```sh
+export DYLD_LIBRARY_PATH=/opt/homebrew/lib
+```
+
+Add that line to your shell profile (`~/.zshrc` etc.) so it's set in every
+session, not just the one where you happened to export it.
+
 ## Quick start
 
 A project is a folder tied together by a `project.yaml`:
