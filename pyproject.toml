@@ -4,11 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "prototyper"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Build print-ready PDF sheets of tabletop game components from HTML/CSS templates and CSV data."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
+license-files = ["LICENSE"]
 authors = [{ name = "prototyper contributors" }]
 keywords = ["tabletop", "cards", "print", "pdf", "board-game", "cli"]
 classifiers = [
@@ -40,9 +41,28 @@ prototyper = "prototyper.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/prototyper/prototyper"
+Repository = "https://github.com/prototyper/prototyper"
+Issues = "https://github.com/prototyper/prototyper/issues"
+
+# Single source of truth for the version: the package's __version__. Bumping
+# it in src/prototyper/__init__.py is all a release needs.
+[tool.hatch.version]
+path = "src/prototyper/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/prototyper"]
+
+# Keep the published source archive to the actual software and its docs;
+# exclude harness/dev-only files that would just be noise on PyPI.
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "CLAUDE.md",
+    "Dockerfile",
+    "docker",
+    "docs/autonomous-run.md",
+    ".pytest_cache",
+    ".github",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

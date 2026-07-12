@@ -24,3 +24,462 @@ Why: Named the package `prototyper` to match the `.prototyper/` history
   NotImplementedError until their tasks land. pytest is configured via
   pyproject (pythonpath=src) so `pytest` works with no install step.
 
+## 2026-07-10 — Task: Define project.yaml schema and loader
+Changed: Added src/prototyper/config.py (frozen dataclasses
+  ProjectConfig/ComponentSize/Layout, ConfigError, load_project loader)
+  and tests/test_config.py covering valid preset/custom configs, layout
+  defaults + overrides, path resolution, and validation errors.
+Why: Modeled the schema straight from the PRD's project folder convention
+  (component size, data path, template path, layout hints) as immutable
+  dataclasses so downstream stages get a stable, typed contract. Kept the
+  loader strictly structural: it resolves data/template paths against the
+  project dir but does NOT check file existence (job of the CSV/template
+  loaders) and does NOT resolve size presets or parse dimension units
+  (deferred to the component-sizing task) — component size is captured
+  verbatim (preset xor width+height, enforced) so those steps have
+  well-formed input. load_project accepts either the project directory or
+  the project.yaml path for CLI ergonomics, unknown keys are rejected to
+  surface typos early, and every failure path raises ConfigError with a
+  human-readable message rather than a raw YAML/KeyError. Layout defaults
+  (0.5in margin, 0.1in gutter, cut_lines on) chosen for home-printing
+  safety and PRD alignment.
+
+## 2026-07-10 — Task: Implement CSV data loader
+Changed: Added src/prototyper/data.py (frozen Dataset dataclass with
+  fieldnames/rows + __len__, DataError, load_data loader) and
+  tests/test_data.py covering row parsing, header/value normalization,
+  BOM/UTF-8/blank-line/short-row tolerance, and every error path.
+Why: Modeled the output as the PRD's input contract — an ordered list of
+  rows, one per component instance, each a {header: value} mapping — so
+  the renderer can instantiate one component per row and resolve
+  placeholders by column name. Values stay strings because CSV is untyped
+  and formatting is the template's job. Used csv.reader (not DictReader)
+  to keep full control over header validation and jagged-row handling.
+  The loader is strict about corruption that silently ruins a print run
+  (duplicate/blank headers = ambiguous placeholders, rows wider than the
+  header = misaligned data, header-only files = nothing to build all
+  raise DataError) but forgiving about harmless spreadsheet artifacts
+  (utf-8-sig strips Excel's BOM, trailing empty cells pad to "", blank
+  lines skip). Errors carry the 1-based line number for hand-editing.
+
+## 2026-07-10 — Task: Implement single-component HTML/CSS rendering
+Changed: Added src/prototyper/render.py (RenderError + render_component,
+  which turns one Jinja2 HTML/CSS template plus one {header: value} data
+  row into the substituted HTML for a single component) and
+  tests/test_render.py covering substitution, autoescaping, filters/
+  conditionals, relative includes, and every error path. Installed jinja2
+  (already a declared dependency) into the dev environment.
+Why: This is the smallest rendering unit the PRD's pipeline needs — "one
+  component defined once, instantiated once per row" — deliberately scoped
+  to produce HTML for a single component; page packing and PDF assembly are
+  later tasks. Row keys are passed as top-level template variables so the
+  PRD's documented {{ name }} placeholder style works directly. Two strict
+  defaults keep it consistent with the config/data loaders' "fail loud on
+  anything that silently ruins a print run" stance: StrictUndefined makes a
+  typo'd placeholder ({{ nmae }}) raise instead of printing a blank card
+  (optional fields remain expressible via the standard `| default('')`
+  filter, which still works under StrictUndefined), and autoescaping is on
+  so data values containing <, & or " can't emit broken HTML — the template
+  supplies markup, data supplies text. The Jinja2 Environment uses a
+  FileSystemLoader rooted at the template's directory so {% include %}/
+  {% extends %} resolve relative to it. Template syntax errors and unknown-
+  field references are both wrapped in RenderError with a human-readable
+  message (syntax errors carry the line number).
+
+## 2026-07-10 — Task: Implement component size presets and custom sizing
+Changed: Added src/prototyper/sizing.py (ResolvedSize dataclass, SizeError,
+  the _PRESETS table, parse_length/resolve_preset/resolve_size/list_presets)
+  and tests/test_sizing.py covering preset resolution + name normalization,
+  unit parsing/conversion, and every error path.
+Why: This is the step the config loader deliberately deferred — it captured
+  component size verbatim (a preset name xor raw width/height strings) so
+  this module could turn it into concrete numbers the packing/rendering
+  stages compute with. Canonicalized to inches (float) because the output
+  page is 8.5x11in, making inches the natural basis for grid-packing math;
+  parse_length converts the CSS absolute units (in/mm/cm/pt/pc/px) and
+  treats a bare number as inches for ergonomics. Shipped the PRD's example
+  presets (poker/bridge/tarot + mini, hex-token, square-token); ResolvedSize
+  carries a `shape` ("rect"/"hex") so hex tokens are meaningfully distinct
+  from square ones and downstream cut-line/packing code has an outline to
+  key on — custom sizes are always rectangular since the config exposes no
+  shape override. Preset names are normalized (case/space/underscore/hyphen
+  insensitive) so "Hex Token" == "hex-token". Kept the loaders' fail-loud
+  stance: unknown preset (lists the valid ones), unparseable length, unknown
+  unit, and non-positive dimensions all raise SizeError with a clear message.
+  Fit-on-page validation is intentionally left to the packing engine.
+
+## 2026-07-10 — Task: Build auto-grid page packing engine
+Changed: Added src/prototyper/pack.py (PAGE_WIDTH_IN/PAGE_HEIGHT_IN
+  constants, Placement/Sheet/PackedLayout dataclasses, PackError, and
+  pack_components) and tests/test_pack.py covering grid computation, the
+  exact-fit floating-point boundary, placement coordinates, multi-sheet
+  overflow, forced page breaks, and every error path.
+Why: This is the PRD's auto-grid page layout — "compute how many components
+  fit per 8.5x11 sheet and fill sheets in data order". Kept it pure
+  geometry: it takes a component *count* (not the data rows or rendered
+  HTML) plus a ResolvedSize and numeric margin/gutter, and returns
+  positioned trim boxes. Decoupling packing from data/render means it is
+  testable with plain numbers and lets the cut-line and PDF-assembly stages
+  each iterate Placements without re-deriving the grid. Placements carry
+  their own width/height so each is a self-contained "draw this rectangle
+  here" instruction. Grid count is floor((usable+gutter)/(size+gutter))
+  with a 1e-6in epsilon so a component that fills the usable area to an
+  exact integer number of columns isn't lost to float drift. Chose top-left
+  anchoring at the margin (not centring the grid in the usable area) so the
+  designer's configured margin is honoured exactly and cut-line coordinates
+  stay predictable; leftover space collects at the right/bottom. Packing is
+  by bounding box, so hex tokens pack like their enclosing rectangle and
+  shape is left for cut-line rendering to interpret. Margin/gutter are
+  accepted as inches (the build command will resolve the config's length
+  strings via sizing.parse_length). This module also discharges the
+  fit-on-page validation the sizing task deferred: a component too wide,
+  too tall, or crowded out by an oversized margin raises PackError with a
+  message naming the offending dimension and the usable space it must fit.
+  Added optional page_breaks (data indices that force a fresh sheet) to
+  cover the PRD's forced-page-break layout hint at the engine level, ahead
+  of any config surface for it; a break at index 0 or a page boundary is a
+  harmless no-op. count=0 yields zero sheets while still reporting the grid.
+
+## 2026-07-10 — Task: Add cut line rendering
+Changed: Added src/prototyper/cutlines.py (CutLine dataclass,
+  cut_lines_for_sheet, cut_lines_for_layout) and tests/test_cutlines.py
+  covering per-edge line placement, full-page spans, gutter/shared-edge
+  dedup, ordering, empty sheets, and integration with the packing engine.
+Why: This is the PRD's cut-line layout hint — "thin registration lines
+  drawn between/around components to guide scissor/paper-cutter trimming;
+  not bleed". Kept it pure geometry like pack.py: it consumes a packed
+  Sheet's Placements and returns line segments in inches, leaving stroke
+  styling (width/colour/dash — a PRD open question) to the later PDF stage.
+  Chose full-page grid lines rather than per-corner crop marks because the
+  packing grid is regular: every component in a column shares the same
+  left/right trim x and every one in a row the same top/bottom trim y, so a
+  line spanning the whole page at any trim edge runs only through gutters
+  and margins and never crosses a component face — while giving an edge-to-
+  edge guide that matches a straight scissor/guillotine cut and the PRD's
+  "between/around" phrasing (interior lines in gutters, outer lines bound
+  the block). Lines are derived from each sheet's actual placements (not the
+  full grid) so a partially filled last sheet is marked only around the
+  components it holds; coincident edges (abutting components at zero gutter)
+  collapse to one line via a 1e-6in epsilon, matching pack.py's tolerance.
+  Placements are treated as bounding boxes (as pack.py does), so hex-outline
+  cut guides are deferred — the straight-cut model doesn't apply to hexes
+  and Placement carries no shape. Whether cut lines are emitted at all is the
+  caller's call via the existing layout.cut_lines config toggle; this module
+  only computes geometry when asked. cut_lines_for_layout is an ergonomic
+  wrapper that pulls page dimensions from the PackedLayout for the PDF stage.
+
+## 2026-07-10 — Task: Implement PDF assembly from packed sheets
+Changed: Added src/prototyper/pdf.py (PdfError, CutLineStyle +
+  DEFAULT_CUT_LINE_STYLE, build_document_html, assemble_pdf) turning a
+  PackedLayout + per-component rendered HTML + optional per-sheet cut lines
+  into a print-ready multi-page PDF, and tests/test_pdf.py covering document
+  structure, component placement/index mapping, cut-line rendering + styling,
+  and every error path. Installed weasyprint (already a declared dependency)
+  into the dev environment.
+Why: This is the stage that turns the upstream pure-geometry results into an
+  actual document. Split deliberately in two: build_document_html is a PURE
+  function that assembles the single HTML/CSS document WeasyPrint paints, and
+  assemble_pdf is a thin wrapper that hands it to WeasyPrint (imported LAZILY)
+  and writes the bytes. The split matters for two reasons: (1) it mirrors the
+  pipeline's geometry-vs-render separation, and (2) WeasyPrint needs native
+  Pango/Cairo/GObject libraries that aren't installable without root in this
+  environment, so keeping all logic + validation in the pure builder means the
+  bulk is fully testable here; the one test that needs a real PDF skips
+  cleanly when those libs are absent (a plain importorskip won't do — the
+  missing libs raise OSError, not ImportError, so the helper catches
+  Exception). All input validation lives in build_document_html and runs
+  BEFORE the lazy import, so assemble_pdf surfaces bad-input errors as
+  PdfError even where WeasyPrint can't load. Layout model: @page matches the
+  layout's page size (not hardcoded, so custom page dims flow through); each
+  Sheet is one position:relative page-sized block; page breaks use
+  `.sheet + .sheet { break-before: page }` (break BEFORE every sheet after the
+  first) rather than break-after, which avoids WeasyPrint emitting a trailing
+  blank page when content exactly fills the last page. Each component is an
+  absolute-positioned div at its Placement's trim box with the rendered HTML
+  embedded verbatim; components are keyed by Placement.index (data order).
+  Cut lines are drawn first (so component faces paint over any coincident
+  edge) as zero-content divs whose single border-left/border-top is the
+  stroke, centred on the trim edge with a negative half-width margin — using
+  border shorthand lets CutLineStyle support solid/dashed/dotted for free.
+  pdf.py takes cut lines PRECOMPUTED (Sequence per sheet) rather than
+  computing them, staying decoupled from cutlines.py exactly as pack/cutlines
+  are decoupled; the build command will decide via layout.cut_lines whether to
+  pass them. Cut-line styling is a PRD open question, so CutLineStyle defaults
+  to a thin (0.25pt) solid black line and is overridable. assemble_pdf takes
+  base_url (defaulting to the output's parent) so relative template assets
+  (images/fonts) resolve, and mkdir -p's the output directory.
+
+## 2026-07-10 — Task: Wire up `build` CLI command
+Changed: Added src/prototyper/build.py (BuildPlan dataclass,
+  default_output_path, plan_build, run_build) chaining config -> data ->
+  sizing -> pack -> render -> cutlines -> pdf into a print-ready PDF, wired
+  the `build` subcommand in src/prototyper/cli.py (project path arg +
+  -o/--output, clean error reporting), and tests/test_build.py covering the
+  planning stage, pagination, cut-line toggle, output-path defaulting/
+  override, and CLI error/success paths.
+Why: This is the first end-to-end command — it joins the previously-built,
+  independently-tested stage modules. Split the pipeline in two mirroring
+  the pipeline's own geometry-vs-render split: plan_build is a PURE function
+  running every stage EXCEPT the PDF write, and run_build adds the one
+  WeasyPrint call. The split matters because WeasyPrint's native
+  (Pango/Cairo/GObject) libs aren't loadable in this environment, so keeping
+  planning pure makes the bulk of the build testable here; the two tests
+  that need a real PDF skip cleanly (guarded by an import probe) exactly as
+  test_pdf.py does. build.py lets each stage's own descriptive exception
+  propagate unchanged (it adds no wrapper error type) so the CLI can render
+  any of them as one "build failed: <msg>" line to stderr with exit code 1
+  and no traceback — the failure modes are already well-worded by the stage
+  modules. The CLI keeps the heavy imports (build -> Jinja2/WeasyPrint) lazy
+  inside _cmd_build so `--version`/`--help` and unrelated subcommands still
+  run before the rendering stack is importable, preserving the scaffold's
+  stdlib-only-surface property. Default output is <project>/build/<name>.pdf:
+  project-local, predictable, easy to find and gitignore; -o overrides it.
+  Config's margin/gutter length STRINGS are resolved to inches here via
+  sizing.parse_length (the seam pack.py's docstring anticipated), and cut
+  lines are computed only when layout.cut_lines is set (else None -> pdf.py
+  draws none). Automatic build-history logging (PRD Design memory) is
+  deliberately left to its own next task; this command does render-to-PDF
+  only.
+
+## 2026-07-10 — Task: Implement history log with automatic build entries
+Changed: Added src/prototyper/history.py (HistoryError, HISTORY_VERSION,
+  history_path/hash_inputs/append_entry/load_history/record_build) owning
+  the PRD "Design memory" log at .prototyper/history.yaml, wired an
+  automatic build entry into run_build (build.py) after the PDF write and
+  added HistoryError to the CLI's clean-error catch list (cli.py), and added
+  tests/test_history.py covering input hashing, log read/write, entry fields
+  + ordering, relative/absolute output paths, malformed-log errors, and the
+  run_build wiring.
+Why: This is the PRD's zero-effort build history — "every build appends an
+  entry with at minimum a timestamp, a content hash of the inputs, and the
+  output PDF path". Chose the on-disk format as a top-level mapping with a
+  `version` and a flat, append-only `entries` list of `type`-tagged mappings,
+  so the manual `note` command (next task) drops in as another entry type
+  without reworking the schema — the PRD flags the exact entry schema as an
+  open question, so keeping it open was the point. YAML is dumped with
+  sort_keys=False so the declared key order (type/timestamp/inputs_hash/
+  output/...) reads as a human changelog while staying machine-readable for
+  the future AI-assisted feature. hash_inputs digests each of the three
+  build-determining files (config, data CSV, template) independently under a
+  role label and combines the labelled digests, so any edit to any input
+  moves the hash and distinct inputs can't collide by concatenation; a
+  build entry stores the output path relative to the project when it lives
+  inside it (portable) and absolute otherwise. Recording happens in
+  run_build AFTER a successful assemble_pdf, so a failed build logs nothing;
+  it is deliberately kept out of the pure plan_build (a side effect). Kept
+  the loaders' fail-loud stance: a malformed history.yaml raises HistoryError
+  rather than being silently overwritten and losing prior history, and that
+  error joins the others the CLI renders as one clean "build failed:" line.
+  record_build takes an injectable timestamp (defaults to UTC now, ISO-8601,
+  seconds precision) so the append/ordering behaviour is deterministically
+  testable, and the run_build wiring test stubs assemble_pdf so it verifies
+  the history side effect without WeasyPrint's native libraries.
+
+## 2026-07-10 — Task: Implement `note` CLI command
+Changed: Added history.record_note (appends a manual "note" entry to
+  .prototyper/history.yaml, associated with the most recent build), wired the
+  `note <message> [project]` subcommand in cli.py (light config+history imports,
+  clean error reporting, build-vs-standalone confirmation message), and added
+  tests/test_note.py covering standalone/attached notes, latest-build
+  selection, append ordering, empty/whitespace/malformed-log errors, YAML
+  readability, and the CLI success/error/defaulting paths.
+Why: This is the PRD's manual half of "Design memory" — the free-text
+  rationale that plain diffs and git messages capture poorly for a
+  non-technical audience, and the part the PRD flags as most worth getting
+  right. The on-disk format was deliberately left open by the history task
+  (a flat, type-tagged entries list), so a note drops in as a second entry
+  type with no schema rework: type/timestamp/message/build, key order
+  preserved so it reads as a changelog. The "associated with the most recent
+  build" requirement is stored as a `build` field carrying that build entry's
+  timestamp (the closest thing to a stable per-build id — inputs_hash repeats
+  on a rebuild of unchanged inputs, so it can't identify *which* build);
+  when no build exists yet the note is standalone with build=None, satisfying
+  the PRD's "or standalone if no build has happened yet". record_note lives in
+  history.py next to record_build but takes the project_dir (not a
+  ProjectConfig) because a note needs no input hashing — only the log; the CLI
+  still load_project()s first so `note` validates the project and shares
+  build's dir-or-yaml-path ergonomics and clean one-line error reporting
+  (ConfigError/HistoryError -> "note failed: <msg>", exit 1, no traceback).
+  Kept the loaders' fail-loud stance: an empty/whitespace-only message and a
+  malformed existing log both raise HistoryError rather than writing junk.
+  timestamp is injectable (defaults to UTC-now ISO-8601, seconds precision)
+  for deterministic tests, mirroring record_build. Message is a required
+  positional and project an optional trailing positional (default ".") to
+  mirror the `build` command's argument shape.
+
+## 2026-07-10 — Task: Build live browser preview server
+Changed: Added src/prototyper/preview.py (PreviewError, render_preview, and
+  the PreviewServer class) — a local HTTP server that live-previews a single
+  rendered component — and tests/test_preview.py covering pure rendering,
+  index selection/bounds, live re-read on edit, HTTP serving of the preview
+  and of static assets, the in-browser error page, and construction-time
+  project validation.
+Why: This is the PRD's "fast styling iteration" feedback loop — a browser
+  preview of ONE rendered component, explicitly NOT the paginated PDF. Kept it
+  standalone: the `watch` command (a later task) will drive it alongside the
+  PDF-rebuild trigger, so this task builds only the server. Mirrored the
+  pipeline's pure-vs-side-effect split: render_preview is a pure function
+  (project path + component index -> a full HTML document) with no socket, so
+  the rendering logic is unit-testable, and PreviewServer is a thin
+  ThreadingHTTPServer wrapper around it. render_preview re-reads config/CSV/
+  template on EVERY call, which is exactly what makes a browser refresh reflect
+  on-disk edits (verified by a test) and what the future file-watcher will lean
+  on. It wraps the one component in a white frame sized to its physical trim box
+  (reusing sizing.resolve_size, the same width/height the PDF stage boxes it in)
+  on a neutral backdrop, so the designer sees true finished size while styling;
+  hex shape isn't special-cased, matching pdf.py's bounding-box treatment. The
+  server routes `/` (and /index.html) to a live re-render and delegates every
+  other path to SimpleHTTPRequestHandler with directory=project_dir, so the
+  template's relative asset paths (assets/images, fonts) resolve exactly as they
+  do against the PDF stage's base_url — reusing stdlib static serving instead of
+  reimplementing content-types/ranges. Kept the loaders' fail-loud stance at the
+  edges but made the running server resilient in the middle: it binds on
+  construction and load_project()s up front (a bad project fails before a socket
+  is opened), yet a render failure mid-session (e.g. a template typo while
+  editing) is caught and shown as a 500 HTML error page in the browser rather
+  than dropping the connection, so the designer fixes and refreshes. Responses
+  send Cache-Control: no-store so a refresh always re-renders. Each server gets
+  its OWN dynamically-created handler subclass carrying its project_path/index
+  as class attributes, so two concurrent PreviewServers can't clobber each
+  other's render context. Bound to 127.0.0.1 by default (local dev tool, not a
+  public server); host/port/index are injectable and port 0 (ephemeral) is what
+  the tests use to run real HTTP requests without a fixed-port collision. The
+  watch CLI wiring, file watching, and PDF-rebuild trigger are deliberately
+  left to their own next tasks.
+
+## 2026-07-10 — Task: Add file watcher with PDF rebuild trigger
+Changed: Added src/prototyper/watch.py (scan_inputs/diff_snapshots pure
+  snapshot+diff helpers, default_ignores, the ProjectWatcher polling driver,
+  and make_rebuilder — an on_change callback that runs run_build) and
+  tests/test_watch.py covering snapshotting, ignore pruning, diffing,
+  add/edit/delete detection, the rebuild-loop guard, the poll/watch/stop
+  lifecycle, and the build integration (stubbed).
+Why: This is the PRD watch command's "PDF rebuild trigger" loop — the
+  counterpart to the already-built preview server, checking true final page
+  layout by rebuilding the whole PDF on any input change. Built standalone
+  (the watch CLI command that combines it with the preview server is the next
+  task), mirroring how preview.py landed before its command. Kept the
+  pipeline's pure-vs-side-effect split so change detection is fully testable
+  without threads/sockets/WeasyPrint: scan_inputs returns a
+  {path: (mtime, size)} snapshot and diff_snapshots compares two, while
+  ProjectWatcher holds the current snapshot and fires an injectable on_change
+  on each poll. Chose polling (compare mtime+size on an interval) over OS
+  filesystem events to stay stdlib-only and dependency-free, consistent with
+  the rest of the tool — no watchdog dependency added to pyproject. The
+  rebuild action is injected (make_rebuilder wraps run_build) rather than
+  baked in, so the watcher core needs no rendering stack and tests stub the
+  build; make_rebuilder catches the pipeline errors so a template typo shows
+  up via on_error but never kills a long-running watch session (same
+  resilience-in-the-middle stance as the preview server's in-browser error
+  page). Critically, .prototyper/ and the default build/ output dir are
+  ignored by default (default_ignores) because a rebuild WRITES both — watching
+  them would make every rebuild trigger another, an infinite loop; extra
+  paths (e.g. a build -o override) are passable via ignore. watch() waits on a
+  threading.Event so stop() ends the loop promptly, and construction
+  load_project()s up front (fail loud on a bad project before any polling).
+
+## 2026-07-10 — Task: Wire up `watch` CLI command
+Changed: Added prototyper.watch.WatchSession (orchestrates the preview server
+  and the PDF-rebuild watcher as one session with start/run/stop/close +
+  context-manager lifecycle), fleshed out the `watch` subcommand in cli.py
+  (project arg, -o/--output, --index, --host, --port, --poll-interval,
+  --no-preview, --no-build; clean error reporting; Ctrl-C handling), and added
+  tests/test_watch_cli.py covering session construction/validation, preview
+  serving, initial + on-change rebuilds, build-error resilience, and the CLI
+  wiring (bad-project error, lifecycle, flag pass-through, cwd default).
+Why: This is the PRD's `watch` command — the one command that combines the two
+  fast-feedback loops the two previous tasks built standalone: the live browser
+  preview (PreviewServer) for styling and the PDF-rebuild trigger
+  (ProjectWatcher + make_rebuilder) for true page layout. WatchSession is the
+  join point, mirroring how build.py joined the pure stage modules; the CLI
+  handler stays thin (arg parsing, print/reporting hooks, Ctrl-C). Split the
+  lifecycle so failure modes surface before the blocking loop: __init__
+  load_project()s and binds the preview socket, so a bad project (ConfigError)
+  or a taken port (OSError) both exit 1 with one clean "watch failed:" line
+  rather than a traceback mid-run. start() runs the preview server on a DAEMON
+  thread so run() can block the MAIN thread on the watch loop — that placement
+  is deliberate: Ctrl-C must land on the main thread to end the session, which
+  the CLI catches to stop()/close() cleanly (exit 0). start() also does one
+  initial build (initial_build, default on) so an up-to-date PDF exists before
+  the first edit; like every rebuild it goes through make_rebuilder, so a
+  startup template error is reported via on_error and never aborts the session
+  (same resilience-in-the-middle stance as the preview server's error page and
+  the watcher's caught rebuilds). Either loop is independently disableable
+  (--no-preview / --no-build) for a headless rebuild-only watch or a
+  preview-only session (which run() serves by waiting on an Event instead of
+  polling). host/port/poll_interval are None-sentinel in the session signature
+  and only passed through from the CLI when the user set them, so the preview
+  and watcher module defaults stay the single source of truth. Preview imports
+  (Jinja2) stay lazy inside WatchSession so importing prototyper.watch alone
+  still needs no rendering stack, consistent with the rest of the CLI surface.
+  The rebuild reporting hooks (on_change/on_rebuild/on_error) are injected so
+  the session core prints nothing itself and tests stub the build to verify
+  wiring without WeasyPrint.
+
+## 2026-07-10 — Task: Create example starter project
+Changed: Added examples/starter-cards/ (project.yaml, data/cards.csv,
+  templates/card.html, README.md) — a minimal, copy-me poker-card project —
+  and tests/test_example_project.py asserting the folder convention, config
+  load/path-resolution, a multi-sheet plan_build, data substitution, and
+  CSV-header/placeholder agreement.
+Why: This is the PRD's "a first project works with minimal configuration"
+  goal — the concrete thing a new designer copies and runs before reading any
+  docs, so it doubles as living documentation of the folder convention and the
+  build/watch/note workflow (spelled out in its README). Chose the `poker`
+  preset (the most familiar card size) and six cards so the auto-grid packs 4
+  per 8.5x11 sheet and the example actually spills onto a SECOND sheet,
+  demonstrating pagination rather than a trivial single page. Kept it
+  ASSET-FREE (all styling is inline CSS, no images/fonts) so it builds anywhere
+  with no extra files or missing-asset failures; the README points at where an
+  assets/ folder would go for real projects (git can't track empty dirs, so
+  shipping an empty assets/ would be dead weight anyway). The template is
+  deliberately valid under the renderer's strict defaults: every placeholder
+  maps to a CSV column (StrictUndefined would otherwise fail the build) and the
+  optional `type` uses `| default('')` to model the documented optional-field
+  pattern. Gotcha worth recording: Jinja2 evaluates its tags even inside HTML
+  comments, so the template's explanatory header comment is phrased to avoid a
+  literal double-brace placeholder (an early draft rendered a placeholder in a
+  comment and failed with an 'undefined' error). Tests drive the example
+  through the PURE plan_build so they exercise the whole pipeline short of the
+  PDF write without WeasyPrint's native libs, matching how the rest of the
+  suite stays runnable here. No .gitignore change needed: build/, *.pdf, and
+  .prototyper/ are already ignored, so example builds/history stay untracked
+  while the source template/data/config are committed.
+
+## 2026-07-10 — Task: Prepare PyPI packaging and publish
+Changed: Wrote the real README.md (project long description for PyPI: intro,
+  features, install, quick start, command table, dev + release steps), added
+  a MIT LICENSE file, and tightened pyproject.toml — version is now dynamic
+  (single-sourced from src/prototyper/__init__.py via [tool.hatch.version]
+  instead of a hardcoded literal), license-files=["LICENSE"], added
+  Repository/Issues URLs, and a [tool.hatch.build.targets.sdist] exclude list
+  dropping harness/dev-only files (CLAUDE.md, Dockerfile, docker/,
+  docs/autonomous-run.md, .pytest_cache, .github) from the published archive.
+  Added tests/test_packaging.py asserting the README is substantial and set as
+  the readme, the LICENSE exists and is MIT, the version is single-sourced (not
+  a literal in [project]), and — by actually building a wheel — that its
+  METADATA carries Description-Content-Type: text/markdown, a non-empty
+  description, the package version, the MIT classifier, and the console entry
+  point.
+Why: This is the PRD's distribution goal — "a real, pip-installable package
+  with a console-script CLI, published to PyPI". The scaffold already built,
+  but the metadata a user/PyPI actually sees was thin: the readme file was
+  EMPTY, so the wheel METADATA had no long description and no
+  Description-Content-Type at all (PyPI would show a blank project page), and
+  the declared MIT license had no LICENSE file to back it. Filling the README
+  and adding LICENSE fixes both; `twine check` now PASSES on both sdist and
+  wheel (the canonical "is this uploadable" gate). Made the version dynamic so
+  it lives in exactly one place — the literal in pyproject.toml and the one in
+  __init__.py were already both 0.1.0 and would silently drift on the next
+  bump; now a release is a one-line change to __version__. Scoped the sdist
+  because a published source archive shouldn't ship build-agent instructions
+  (CLAUDE.md) or the container harness (Dockerfile/docker/) — kept src/, tests/,
+  examples/, and the user-facing docs (PRD, tasklist, progress). The build test
+  skips cleanly when the `build`/`hatchling` backends aren't importable, matching
+  how the WeasyPrint-dependent tests degrade, so the suite stays green anywhere.
+  NOT done: the actual `twine upload` to PyPI. Publishing is an irreversible,
+  outward-facing action requiring PyPI account credentials this environment
+  doesn't hold, so it can't and shouldn't be automated here — the package is
+  fully upload-ready and the exact publish procedure (build -> twine check ->
+  twine upload) is documented in README's "Building and publishing a release".
+

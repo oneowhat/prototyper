@@ -1,0 +1,90 @@
+<!--
+  Card template for the starter example.
+
+  Data fields from cards.csv are injected via Jinja2 double-brace
+  placeholders. This template uses the columns: name, cost, type, text.
+  (Jinja2 evaluates its tags even inside HTML comments, so this note
+  avoids writing a literal placeholder here.)
+
+  The template fills its whole component box (the physical trim size comes
+  from the `poker` preset in project.yaml). All styling is inline CSS so the
+  example needs no external assets; drop images/fonts into ../assets and
+  reference them by relative path when you extend it.
+-->
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      .card {
+        box-sizing: border-box;
+        width: 100%;
+        height: 100%;
+        padding: 0.14in;
+        border: 2px solid #222;
+        border-radius: 0.12in;
+        background: #fbfaf5;
+        font-family: Georgia, "Times New Roman", serif;
+        color: #1a1a1a;
+        display: flex;
+        flex-direction: column;
+      }
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.1in;
+      }
+      .name {
+        font-size: 12pt;
+        font-weight: bold;
+        line-height: 1.1;
+      }
+      .cost {
+        flex: 0 0 auto;
+        width: 0.34in;
+        height: 0.34in;
+        border-radius: 50%;
+        background: #2b4a7a;
+        color: #fff;
+        font-size: 12pt;
+        font-weight: bold;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .type {
+        margin-top: 0.06in;
+        font-size: 8pt;
+        letter-spacing: 0.04in;
+        text-transform: uppercase;
+        color: #6b6b6b;
+      }
+      .divider {
+        margin: 0.08in 0;
+        border-bottom: 1px solid #cfc9b8;
+      }
+      .text {
+        font-size: 9pt;
+        line-height: 1.35;
+        flex: 1 1 auto;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="header">
+        <span class="name">{{ name }}</span>
+        <span class="cost">{{ cost }}</span>
+      </div>
+      <div class="type">{{ type | default('') }}</div>
+      <div class="divider"></div>
+      <div class="text">{{ text }}</div>
+    </div>
+  </body>
+</html>

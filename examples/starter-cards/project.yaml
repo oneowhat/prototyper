@@ -1,0 +1,34 @@
+# Example starter project for prototyper.
+#
+# This is a minimal, working project you can copy as a starting point.
+# Build it from the repo root with:
+#
+#     prototyper build examples/starter-cards
+#
+# The output PDF lands in examples/starter-cards/build/starter-cards.pdf.
+
+name: starter-cards
+
+# Standard poker card size (2.5 x 3.5 in). Run `prototyper` presets or see
+# the PRD for the other built-ins (bridge, tarot, mini, hex-token,
+# square-token). To use a custom size instead, replace `size:` with an
+# explicit `width:`/`height:` pair, e.g.:
+#   component:
+#     width: 2.5in
+#     height: 3.5in
+component:
+  size: poker
+
+# One row per card. Column headers become template placeholders.
+data: data/cards.csv
+
+# The HTML/CSS template rendered once per data row.
+template: templates/card.html
+
+# Page layout hints. These are the defaults, shown here so they're easy to
+# tweak: half-inch margins, a small gutter between cards, and cut lines to
+# guide home trimming.
+layout:
+  margin: 0.5in
+  gutter: 0.1in
+  cut_lines: true
